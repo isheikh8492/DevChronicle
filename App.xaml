@@ -16,6 +16,7 @@
             <converters:InverseBoolConverter x:Key="InverseBoolConverter"/>
             <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
             <converters:CountAndNotMiningToVisibilityConverter x:Key="CountAndNotMiningToVisibilityConverter"/>
+            <converters:SelectedDayAndNotSummarizingConverter x:Key="SelectedDayAndNotSummarizingConverter"/>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

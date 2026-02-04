@@ -155,6 +155,12 @@ public partial class MiningViewModel : ObservableObject
             return;
         }
 
+        if (session.RangeStart.HasValue && session.RangeEnd.HasValue)
+        {
+            await RunMiningRangeAsync(session.RangeStart.Value.Date, session.RangeEnd.Value.Date);
+            return;
+        }
+
         SessionOptions options;
         try
         {
@@ -170,6 +176,103 @@ public partial class MiningViewModel : ObservableObject
 
         var windowDays = options.WindowSizeDays > 0 ? options.WindowSizeDays : 14;
         await RunMiningAsync(windowDays);
+    }
+
+    public async Task RunMiningRangeAsync(DateTime since, DateTime until)
+    {
+        if (IsMining) return;
+
+        var session = _sessionContext.CurrentSession;
+        if (session == null)
+        {
+            Status = "No session selected";
+            IsMining = false;
+            return;
+        }
+
+        IsMining = true;
+        _cancellationTokenSource = new CancellationTokenSource();
+
+        try
+        {
+            SessionOptions options;
+            try
+            {
+                options = string.IsNullOrEmpty(session.OptionsJson)
+                    ? new SessionOptions()
+                    : JsonSerializer.Deserialize<SessionOptions>(session.OptionsJson) ?? new SessionOptions();
+            }
+            catch (JsonException ex)
+            {
+                Status = $"Invalid session options JSON: {ex.Message}. Using defaults.";
+                options = new SessionOptions();
+            }
+
+            List<AuthorFilter> authorFilters;
+            try
+            {
+                authorFilters = string.IsNullOrEmpty(session.AuthorFiltersJson)
+                    ? new List<AuthorFilter>()
+                    : JsonSerializer.Deserialize<List<AuthorFilter>>(session.AuthorFiltersJson) ?? new List<AuthorFilter>();
+            }
+            catch (JsonException ex)
+            {
+                Status = $"Invalid author filters JSON: {ex.Message}. Using defaults.";
+                authorFilters = new List<AuthorFilter>();
+            }
+
+            var progressReporter = new Progress<MiningProgress>(p =>
+            {
+                Status = p.Status;
+            });
+
+            Status = $"Mining {since:yyyy-MM-dd} to {until:yyyy-MM-dd}...";
+            var result = await _miningService.MineCommitsAsync(
+                session.Id,
+                session.RepoPath,
+                since,
+                until,
+                options,
+                authorFilters,
+                progressReporter,
+                _cancellationTokenSource.Token);
+
+            DaysMined = result.DaysMined;
+            CommitsFound = result.StoredCommits;
+
+            if (result.Success)
+            {
+                Status = $"Complete! Mined {result.DaysMined} days, {result.StoredCommits} commits.";
+                MiningCompleted?.Invoke(this, EventArgs.Empty);
+            }
+            else
+            {
+                Status = $"Error: {result.ErrorMessage}";
+                System.Windows.MessageBox.Show(
+                    $"Mining failed:\n\n{result.ErrorMessage}\n\n" +
+                    $"Full Details:\n{result.ErrorDetails ?? "No additional details"}",
+                    "Mining Error",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Status = $"Unexpected error: {ex.Message}";
+            System.Windows.MessageBox.Show(
+                $"Unexpected mining error:\n\n{ex.Message}\n\n" +
+                $"Type: {ex.GetType().Name}\n\n" +
+                $"Stack Trace:\n{ex.StackTrace}",
+                "Unexpected Mining Error",
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Error);
+        }
+        finally
+        {
+            IsMining = false;
+            _cancellationTokenSource?.Dispose();
+            _cancellationTokenSource = null;
+        }
     }
 
     [RelayCommand]

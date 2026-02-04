@@ -2,47 +2,12 @@
       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
       xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-      xmlns:vm="clr-namespace:DevChronicle.ViewModels"
       Title="Session Detail"
       Foreground="{DynamicResource TextFillColorPrimaryBrush}">
 
-    <Page.Resources>
-        <Style x:Key="SegmentToggleStyle" TargetType="ToggleButton">
-            <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorSecondaryBrush}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
-            <Setter Property="Padding" Value="10,6"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ToggleButton">
-                        <Border Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="8">
-                            <ContentPresenter HorizontalAlignment="Center"
-                                              VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter Property="Background" Value="{DynamicResource AccentFillColorSecondaryBrush}"/>
-                                <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorPrimaryBrush}"/>
-                            </Trigger>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Opacity" Value="0.6"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-    </Page.Resources>
-
     <Grid Margin="56,24,56,24">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
@@ -85,8 +50,52 @@
             </Border>
         </ui:Card>
 
+        <!-- Summarization Navbar -->
+        <ui:Card Grid.Row="1" Margin="0,0,0,8">
+            <Border Padding="16,12">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <ui:Button Grid.Column="0"
+                               Content="Summarize Selected"
+                               Icon="{ui:SymbolIcon Sparkle24}"
+                               Appearance="Primary"
+                               Command="{Binding Summarization.SummarizeSelectedDayCommand}"
+                               CommandParameter="{Binding DayBrowser.SelectedDay}"
+                               Margin="0,0,10,0">
+                        <ui:Button.IsEnabled>
+                            <MultiBinding Converter="{StaticResource SelectedDayAndNotSummarizingConverter}">
+                                <Binding Path="DayBrowser.SelectedDay"/>
+                                <Binding Path="Summarization.IsSummarizing"/>
+                            </MultiBinding>
+                        </ui:Button.IsEnabled>
+                    </ui:Button>
+
+                    <ui:Button Grid.Column="1"
+                               Content="Summarize All Pending Days"
+                               Icon="{ui:SymbolIcon Sparkle24}"
+                               Appearance="Primary"
+                               Command="{Binding Summarization.SummarizePendingDaysCommand}"
+                               IsEnabled="{Binding Summarization.IsSummarizing, Converter={StaticResource InverseBoolConverter}}"
+                               Margin="0,0,10,0"/>
+
+                    <ui:Button Grid.Column="2"
+                               Content="Stop Summarizing"
+                               Icon="{ui:SymbolIcon Stop24}"
+                               Appearance="Danger"
+                               Command="{Binding Summarization.StopCommand}"
+                               IsEnabled="{Binding Summarization.IsSummarizing}"/>
+                </Grid>
+            </Border>
+        </ui:Card>
+
         <!-- Main Content: Day List + Detail Pane (No page scroll) -->
-        <Grid Grid.Row="1">
+        <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="320"/>
                 <ColumnDefinition Width="12"/>
@@ -287,7 +296,6 @@
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
 
@@ -309,175 +317,55 @@
                             </TextBlock>
                         </Grid>
 
-                        <!-- Segmented Switch -->
-                        <Border Grid.Row="1"
-                                Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
-                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
-                                BorderThickness="1"
-                                CornerRadius="10"
-                                Padding="4"
-                                Margin="0,0,0,20">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <ToggleButton Content="Summarization"
-                                              MinWidth="140"
-                                              Command="{Binding SetPanelCommand}"
-                                              CommandParameter="{x:Static vm:SessionDetailPanel.Summarization}"
-                                              Grid.Column="0">
-                                    <ToggleButton.Style>
-                                        <Style TargetType="ToggleButton" BasedOn="{StaticResource SegmentToggleStyle}">
-                                            <Setter Property="Margin" Value="0,0,6,0"/>
+                        <!-- Summary Preview -->
+                        <Grid Grid.Row="1" VerticalAlignment="Top">
+                            <StackPanel>
+                                <TextBlock Text="Summary Preview"
+                                           FontSize="16"
+                                           FontWeight="SemiBold"
+                                           Margin="0,0,0,12"/>
+
+                                <ItemsControl ItemsSource="{Binding SelectedDayBullets}">
+                                    <ItemsControl.Style>
+                                        <Style TargetType="ItemsControl">
+                                            <Setter Property="Visibility" Value="Visible"/>
                                             <Style.Triggers>
-                                                <DataTrigger Binding="{Binding SelectedPanel}" Value="{x:Static vm:SessionDetailPanel.Summarization}">
-                                                    <Setter Property="IsChecked" Value="True"/>
+                                                <DataTrigger Binding="{Binding HasSelectedDaySummary}" Value="False">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
-                                    </ToggleButton.Style>
-                                </ToggleButton>
-                                <ToggleButton Content="Export"
-                                              MinWidth="80"
-                                              Command="{Binding SetPanelCommand}"
-                                              CommandParameter="{x:Static vm:SessionDetailPanel.Export}"
-                                              Grid.Column="1">
-                                    <ToggleButton.Style>
-                                        <Style TargetType="ToggleButton" BasedOn="{StaticResource SegmentToggleStyle}">
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding SelectedPanel}" Value="{x:Static vm:SessionDetailPanel.Export}">
-                                                    <Setter Property="IsChecked" Value="True"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </ToggleButton.Style>
-                                </ToggleButton>
-                            </Grid>
-                        </Border>
-
-                        <!-- Panel Content -->
-                        <Grid Grid.Row="2" VerticalAlignment="Top">
-                            <!-- Summarization Panel -->
-                            <Grid Visibility="Collapsed">
-                                <Grid.Style>
-                                    <Style TargetType="Grid">
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding SelectedPanel}" Value="{x:Static vm:SessionDetailPanel.Summarization}">
-                                                <Setter Property="Visibility" Value="Visible"/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Grid.Style>
-                                <Grid>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
-                                    </Grid.RowDefinitions>
-                                    <TextBlock Grid.Row="0" Text="AI Summarization" FontSize="16" FontWeight="SemiBold" Margin="0,4,0,12"/>
-                                    <ui:Button Grid.Row="1" Content="Summarize All Pending Days"
-                                               Icon="{ui:SymbolIcon Sparkle24}"
-                                               Appearance="Primary"
-                                               Command="{Binding Summarization.SummarizePendingDaysCommand}"
-                                               IsEnabled="{Binding Summarization.IsSummarizing, Converter={StaticResource InverseBoolConverter}}"
-                                               Height="40"
-                                               Margin="0,0,0,8"/>
-                                    <ui:Button Grid.Row="2" Content="Stop Summarization"
-                                               Icon="{ui:SymbolIcon Stop24}"
-                                               Appearance="Danger"
-                                               Command="{Binding Summarization.StopCommand}"
-                                               IsEnabled="{Binding Summarization.IsSummarizing}"
-                                               Height="36"/>
-                                </Grid>
-                            </Grid>
-
-                            <!-- Export Panel -->
-                            <Grid Visibility="Collapsed">
-                                <Grid.Style>
-                                    <Style TargetType="Grid">
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding SelectedPanel}" Value="{x:Static vm:SessionDetailPanel.Export}">
-                                                <Setter Property="Visibility" Value="Visible"/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Grid.Style>
-                                <Grid>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
-                                    </Grid.RowDefinitions>
-                                    <Grid Grid.Row="0" Margin="0,4,0,16">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                            <ColumnDefinition Width="*"/>
-                                        </Grid.ColumnDefinitions>
-
-                                        <Border Grid.Column="0"
-                                                Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
-                                                CornerRadius="8"
-                                                Padding="10"
-                                                Margin="0,0,8,0">
-                                            <StackPanel>
-                                                <TextBlock Text="FROM"
-                                                           FontSize="10"
-                                                           FontWeight="SemiBold"
+                                    </ItemsControl.Style>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                                <TextBlock Text="•"
+                                                           FontSize="14"
                                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                           Margin="0,0,0,6"/>
-                                                <DatePicker SelectedDate="{Binding Export.StartDate}"
-                                                            BorderThickness="0"
-                                                            Background="Transparent"/>
+                                                           Margin="0,0,8,0"/>
+                                                <TextBlock Text="{Binding}"
+                                                           TextWrapping="Wrap"
+                                                           FontSize="13"/>
                                             </StackPanel>
-                                        </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
 
-                                        <ui:SymbolIcon Grid.Column="1"
-                                                       Symbol="ArrowRight24"
-                                                       VerticalAlignment="Center"
-                                                       Margin="12,0"/>
-
-                                        <Border Grid.Column="2"
-                                                Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
-                                                CornerRadius="8"
-                                                Padding="10"
-                                                Margin="8,0,0,0">
-                                            <Grid>
-                                                <Grid.RowDefinitions>
-                                                    <RowDefinition Height="Auto"/>
-                                                    <RowDefinition Height="Auto"/>
-                                                </Grid.RowDefinitions>
-                                                <TextBlock Text="TO"
-                                                           FontSize="10"
-                                                           FontWeight="SemiBold"
-                                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                           Margin="0,0,0,6"/>
-                                                <DatePicker Grid.Row="1" SelectedDate="{Binding Export.EndDate}"
-                                                            BorderThickness="0"
-                                                            Background="Transparent"/>
-                                            </Grid>
-                                        </Border>
-                                    </Grid>
-
-                                    <Grid Grid.Row="1">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <ui:Button Grid.Column="0" Content="Developer Diary"
-                                                   Icon="{ui:SymbolIcon Document24}"
-                                                   Appearance="Primary"
-                                                   Command="{Binding Export.ExportDeveloperDiaryCommand}"
-                                                   Height="40"
-                                                   Margin="0,0,8,0"/>
-                                        <ui:Button Grid.Column="1" Content="Resume Bullets"
-                                                   Icon="{ui:SymbolIcon DocumentBulletList24}"
-                                                   Appearance="Primary"
-                                                   Command="{Binding Export.ExportResumeBulletsCommand}"
-                                                   Height="40"/>
-                                    </Grid>
-                                </Grid>
-                            </Grid>
+                                <TextBlock Text="No summary yet. Select a day and run summarization."
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding HasSelectedDaySummary}" Value="False">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
                         </Grid>
                     </Grid>
                 </Border>

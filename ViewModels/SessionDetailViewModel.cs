@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DevChronicle.Models;
@@ -26,6 +27,12 @@ public partial class SessionDetailViewModel : ObservableObject
 
     [ObservableProperty]
     private SessionDetailPanel selectedPanel = SessionDetailPanel.Summarization;
+
+    [ObservableProperty]
+    private ObservableCollection<string> selectedDayBullets = new();
+
+    [ObservableProperty]
+    private bool hasSelectedDaySummary;
 
     /// <summary>
     /// Phase A: Mining ViewModel
@@ -67,6 +74,8 @@ public partial class SessionDetailViewModel : ObservableObject
 
         // Subscribe to Summarization events to update day status
         Summarization.DaySummarized += OnDaySummarized;
+
+        DayBrowser.PropertyChanged += DayBrowserOnPropertyChanged;
     }
 
     /// <summary>
@@ -96,6 +105,8 @@ public partial class SessionDetailViewModel : ObservableObject
 
             // Update summarization pending count
             await Summarization.UpdatePendingCountAsync();
+
+            await LoadSelectedDaySummaryAsync();
 
             // Auto-start mining when a new session has no days yet
             if (DayBrowser.Days.Count == 0)
@@ -142,5 +153,61 @@ public partial class SessionDetailViewModel : ObservableObject
     {
         // Update day status badge in day browser
         DayBrowser.UpdateDayStatus(day, Models.DayStatus.Summarized);
+
+        var selected = DayBrowser.SelectedDay;
+        if (selected != null && selected.Date.Date == day.Date)
+        {
+            _ = LoadSelectedDaySummaryAsync();
+        }
+    }
+
+    private void DayBrowserOnPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(DayBrowser.SelectedDay))
+        {
+            _ = LoadSelectedDaySummaryAsync();
+        }
+    }
+
+    private async Task LoadSelectedDaySummaryAsync()
+    {
+        var session = _sessionContext.CurrentSession;
+        var selectedDay = DayBrowser.SelectedDay;
+
+        if (session == null || selectedDay == null)
+        {
+            await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                SelectedDayBullets.Clear();
+                HasSelectedDaySummary = false;
+            });
+            return;
+        }
+
+        var summary = await _databaseService.GetDaySummaryAsync(session.Id, selectedDay.Date);
+        if (summary == null || string.IsNullOrWhiteSpace(summary.BulletsText))
+        {
+            await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                SelectedDayBullets.Clear();
+                HasSelectedDaySummary = false;
+            });
+            return;
+        }
+
+        var bullets = summary.BulletsText
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.Trim())
+            .Where(line => !string.IsNullOrWhiteSpace(line))
+            .ToList();
+
+        await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+        {
+            SelectedDayBullets.Clear();
+            foreach (var bullet in bullets)
+                SelectedDayBullets.Add(bullet);
+
+            HasSelectedDaySummary = SelectedDayBullets.Count > 0;
+        });
     }
 }

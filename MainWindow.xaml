@@ -29,6 +29,7 @@
             <ui:NavigationView.MenuItems>
                 <ui:NavigationViewItem Content="Dashboard" Icon="{ui:SymbolIcon Home24}" TargetPageType="{x:Type views:DashboardPage}" />
                 <ui:NavigationViewItem Content="Sessions" Icon="{ui:SymbolIcon List24}" TargetPageType="{x:Type views:SessionsPage}" />
+                <ui:NavigationViewItem Content="Export" Icon="{ui:SymbolIcon Document24}" TargetPageType="{x:Type views:ExportPage}" />
             </ui:NavigationView.MenuItems>
             <ui:NavigationView.FooterMenuItems>
                 <ui:NavigationViewItem Content="Settings" Icon="{ui:SymbolIcon Settings24}" TargetPageType="{x:Type views:SettingsPage}" />

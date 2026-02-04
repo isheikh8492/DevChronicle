@@ -86,7 +86,7 @@ public class SummarizationService
                 CreatedAt = DateTime.UtcNow
             };
 
-            // TODO: Store summary in database
+            await _databaseService.UpsertDaySummaryAsync(summary);
 
             // Update day status
             var dayRecord = (await _databaseService.GetDaysAsync(sessionId))

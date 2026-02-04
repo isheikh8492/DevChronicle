@@ -315,4 +315,52 @@ public class DatabaseService
             ORDER BY day DESC";
         return await connection.QueryAsync<Models.Day>(sql, new { SessionId = sessionId });
     }
+
+    // Day summary operations
+    public async Task<DaySummary?> GetDaySummaryAsync(int sessionId, DateTime day)
+    {
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+        var dayStart = day.Date.ToString("yyyy-MM-dd");
+        var sql = @"
+            SELECT
+                session_id AS SessionId,
+                day AS Day,
+                bullets_text AS BulletsText,
+                model AS Model,
+                prompt_version AS PromptVersion,
+                input_hash AS InputHash,
+                created_at AS CreatedAt
+            FROM day_summaries
+            WHERE session_id = @SessionId AND day = @Day
+            ORDER BY created_at DESC
+            LIMIT 1";
+        return await connection.QueryFirstOrDefaultAsync<DaySummary>(sql, new { SessionId = sessionId, Day = dayStart });
+    }
+
+    public async Task UpsertDaySummaryAsync(DaySummary summary)
+    {
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+        var sql = @"
+            INSERT INTO day_summaries
+            (session_id, day, bullets_text, model, prompt_version, input_hash, created_at)
+            VALUES (@SessionId, @Day, @BulletsText, @Model, @PromptVersion, @InputHash, @CreatedAt)
+            ON CONFLICT(session_id, day, prompt_version) DO UPDATE SET
+                bullets_text = @BulletsText,
+                model = @Model,
+                input_hash = @InputHash,
+                created_at = @CreatedAt";
+
+        await connection.ExecuteAsync(sql, new
+        {
+            summary.SessionId,
+            Day = summary.Day.ToString("yyyy-MM-dd"),
+            summary.BulletsText,
+            summary.Model,
+            summary.PromptVersion,
+            summary.InputHash,
+            summary.CreatedAt
+        });
+    }
 }

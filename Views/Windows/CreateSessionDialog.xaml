@@ -3,8 +3,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
         Title="Create New Session"
-        Width="600"
-        Height="400"
+        Width="700"
+        Height="700"
+        MinHeight="520"
         WindowStartupLocation="CenterOwner"
         ExtendsContentIntoTitleBar="True"
         WindowBackdropType="Mica"
@@ -31,7 +32,8 @@
         </StackPanel>
 
         <!-- Form Fields -->
-        <StackPanel Grid.Row="1">
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
             <!-- Session Name -->
             <TextBlock
                 Text="Session Name"
@@ -76,6 +78,54 @@
                 Text="main"
                 Margin="0,0,0,16"/>
 
+            <!-- Author Filters -->
+            <TextBlock
+                Text="Author Filters (optional)"
+                FontWeight="Medium"
+                Margin="0,0,0,8"/>
+            <ui:TextBox
+                x:Name="AuthorFiltersTextBox"
+                PlaceholderText="comma-separated names or emails"
+                Margin="0,0,0,16"/>
+
+            <!-- Mining Range -->
+            <TextBlock
+                Text="Mining Range"
+                FontWeight="Medium"
+                Margin="0,0,0,8"/>
+            <CheckBox
+                x:Name="MineAllHistoryCheckBox"
+                Content="Mine all history (ignore date range)"
+                IsChecked="True"
+                Checked="MineAllHistoryCheckBox_Changed"
+                Unchecked="MineAllHistoryCheckBox_Changed"
+                Margin="0,0,0,12"/>
+            <Grid Margin="0,0,0,16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <DatePicker x:Name="RangeStartDatePicker"
+                               Grid.Column="0"
+                               IsEnabled="False"/>
+                <TextBlock Grid.Column="1"
+                           Text="to"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           Margin="12,0"/>
+                <DatePicker x:Name="RangeEndDatePicker"
+                               Grid.Column="2"
+                               IsEnabled="False"/>
+            </Grid>
+
+            <!-- Include Merges -->
+            <CheckBox
+                x:Name="IncludeMergesCheckBox"
+                Content="Include merge commits"
+                IsChecked="True"
+                Margin="0,0,0,16"/>
+
             <!-- Validation Message -->
             <ui:InfoBar
                 x:Name="ValidationInfoBar"
@@ -84,7 +134,8 @@
                 IsOpen="False"
                 IsClosable="True"
                 Margin="0,0,0,16"/>
-        </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
 
         <!-- Action Buttons -->
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">

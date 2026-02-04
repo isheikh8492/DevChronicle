@@ -1,5 +1,7 @@
 using System.IO;
+using System.Text.Json;
 using System.Windows;
+using System.Collections.Generic;
 using DevChronicle.Models;
 using Wpf.Ui.Controls;
 using WinForms = System.Windows.Forms;
@@ -16,6 +18,21 @@ public partial class CreateSessionDialog : FluentWindow
 
         // Set default session name
         SessionNameTextBox.Text = $"Session {DateTime.Now:yyyy-MM-dd}";
+
+        if (RangeEndDatePicker != null)
+            RangeEndDatePicker.SelectedDate = DateTime.Today;
+        if (RangeStartDatePicker != null)
+            RangeStartDatePicker.SelectedDate = DateTime.Today.AddDays(-14);
+    }
+
+    private void MineAllHistoryCheckBox_Changed(object sender, RoutedEventArgs e)
+    {
+        if (MineAllHistoryCheckBox == null || RangeStartDatePicker == null || RangeEndDatePicker == null)
+            return;
+
+        var mineAll = MineAllHistoryCheckBox.IsChecked == true;
+        RangeStartDatePicker.IsEnabled = !mineAll;
+        RangeEndDatePicker.IsEnabled = !mineAll;
     }
 
     private void BrowseButton_Click(object sender, RoutedEventArgs e)
@@ -69,13 +86,58 @@ public partial class CreateSessionDialog : FluentWindow
             return;
         }
 
+        if (MineAllHistoryCheckBox == null || RangeStartDatePicker == null || RangeEndDatePicker == null)
+        {
+            ShowValidationError("Date range controls are not available.");
+            return;
+        }
+
+        var mineAll = MineAllHistoryCheckBox.IsChecked == true;
+        if (!mineAll)
+        {
+            if (RangeStartDatePicker.SelectedDate == null || RangeEndDatePicker.SelectedDate == null)
+            {
+                ShowValidationError("Please select a start and end date, or choose 'Mine all history'.");
+                return;
+            }
+
+            if (RangeStartDatePicker.SelectedDate > RangeEndDatePicker.SelectedDate)
+            {
+                ShowValidationError("Start date must be before end date.");
+                return;
+            }
+        }
+
+        var authorFilters = new List<AuthorFilter>();
+        if (AuthorFiltersTextBox != null && !string.IsNullOrWhiteSpace(AuthorFiltersTextBox.Text))
+        {
+            var tokens = AuthorFiltersTextBox.Text
+                .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            foreach (var token in tokens)
+            {
+                if (token.Contains("@"))
+                    authorFilters.Add(new AuthorFilter { Email = token });
+                else
+                    authorFilters.Add(new AuthorFilter { Name = token });
+            }
+        }
+
+        var options = new SessionOptions
+        {
+            IncludeMerges = IncludeMergesCheckBox != null && IncludeMergesCheckBox.IsChecked == true
+        };
+
         // Create the session object
         Result = new Session
         {
             Name = SessionNameTextBox.Text.Trim(),
             RepoPath = RepoPathTextBox.Text.Trim(),
             MainBranch = MainBranchTextBox.Text.Trim(),
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            AuthorFiltersJson = JsonSerializer.Serialize(authorFilters),
+            OptionsJson = JsonSerializer.Serialize(options),
+            RangeStart = mineAll ? null : RangeStartDatePicker.SelectedDate?.Date,
+            RangeEnd = mineAll ? null : RangeEndDatePicker.SelectedDate?.Date
         };
 
         DialogResult = true;

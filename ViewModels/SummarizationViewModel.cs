@@ -127,6 +127,64 @@ public partial class SummarizationViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private async Task SummarizeSelectedDayAsync(DayViewModel? day)
+    {
+        if (IsSummarizing) return;
+
+        var session = _sessionContext.CurrentSession;
+        if (session == null)
+        {
+            Status = "No session selected";
+            return;
+        }
+
+        if (day == null)
+        {
+            Status = "No day selected";
+            return;
+        }
+
+        IsSummarizing = true;
+        _cancellationTokenSource = new CancellationTokenSource();
+
+        try
+        {
+            Status = $"Summarizing day {day.Date:yyyy-MM-dd}...";
+
+            var result = await _summarizationService.SummarizeDayAsync(
+                session.Id,
+                day.Date,
+                maxBullets: 6,
+                cancellationToken: _cancellationTokenSource.Token);
+
+            if (result.Success)
+            {
+                day.Day.Status = DayStatus.Summarized;
+                await _databaseService.UpsertDayAsync(day.Day);
+
+                DaysSummarized++;
+                DaySummarized?.Invoke(this, day.Date);
+                Status = $"Complete! Summarized {day.Date:yyyy-MM-dd}.";
+            }
+            else
+            {
+                Status = $"Error summarizing {day.Date:yyyy-MM-dd}: {result.ErrorMessage}";
+            }
+        }
+        catch (Exception ex)
+        {
+            Status = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            IsSummarizing = false;
+            _cancellationTokenSource?.Dispose();
+            _cancellationTokenSource = null;
+            await UpdatePendingCountAsync();
+        }
+    }
+
+    [RelayCommand]
     private void Stop()
     {
         _cancellationTokenSource?.Cancel();
