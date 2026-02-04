@@ -81,5 +81,28 @@ namespace DevChronicle
                     System.Windows.MessageBoxImage.Error);
             }
         }
+
+        public void NavigateBack()
+        {
+            try
+            {
+                if (RootNavigationView.CanGoBack)
+                {
+                    RootNavigationView.GoBack();
+                }
+                else
+                {
+                    RootNavigationView.Navigate(typeof(SessionsPage));
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show(
+                    $"Navigation back error:\n\n{ex.Message}\n\nStack Trace:\n{ex.StackTrace}",
+                    "Navigation Error",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Error);
+            }
+        }
     }
 }

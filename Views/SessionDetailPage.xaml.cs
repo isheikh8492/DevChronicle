@@ -67,4 +67,12 @@ public partial class SessionDetailPage : Page
                 System.Windows.MessageBoxImage.Error);
         }
     }
+
+    private void Button_Click(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (System.Windows.Application.Current.MainWindow is MainWindow mainWindow)
+        {
+            mainWindow.NavigateBack();
+        }
+    }
 }

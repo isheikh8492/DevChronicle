@@ -78,6 +78,14 @@ public partial class DayBrowserViewModel : ObservableObject
                 {
                     Days.Add(new DayViewModel(day));
                 }
+
+                // Auto-select the first (most recent) day
+                if (Days.Count > 0)
+                {
+                    var firstDay = Days[0];
+                    firstDay.IsExpanded = true;
+                    SelectedDay = firstDay;
+                }
             });
         }
         catch (Exception ex)

@@ -24,6 +24,9 @@ public partial class SessionDetailViewModel : ObservableObject
     [ObservableProperty]
     private string? errorMessage;
 
+    [ObservableProperty]
+    private SessionDetailPanel selectedPanel = SessionDetailPanel.Day;
+
     /// <summary>
     /// Phase A: Mining ViewModel
     /// </summary>
@@ -112,6 +115,12 @@ public partial class SessionDetailViewModel : ObservableObject
 
         // Navigate back to Sessions page
         // Note: Navigation will be implemented in MainWindow/SessionDetailPage
+    }
+
+    [RelayCommand]
+    private void SetPanel(SessionDetailPanel panel)
+    {
+        SelectedPanel = panel;
     }
 
     private async void OnMiningCompleted(object? sender, EventArgs e)
