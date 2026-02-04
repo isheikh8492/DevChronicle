@@ -104,6 +104,19 @@
 
             <!-- Left: Day Cards List -->
             <ui:Card Grid.Column="0" VerticalAlignment="Stretch" VerticalContentAlignment="Top">
+                <ui:Card.ContextMenu>
+                    <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                        <MenuItem Header="Mine last N days"
+                                  Command="{Binding Mining.MineLastWindowCommand}"
+                                  IsEnabled="{Binding Mining.IsMining, Converter={StaticResource InverseBoolConverter}}"/>
+                        <MenuItem Header="Backfill previous N days"
+                                  Command="{Binding Mining.BackfillPreviousWindowCommand}"
+                                  IsEnabled="{Binding Mining.IsMining, Converter={StaticResource InverseBoolConverter}}"/>
+                        <MenuItem Header="{Binding Mining.BackfillOrderLabel}"
+                                  Command="{Binding Mining.BackfillOrderCommand}"
+                                  IsEnabled="{Binding Mining.IsMining, Converter={StaticResource InverseBoolConverter}}"/>
+                    </ContextMenu>
+                </ui:Card.ContextMenu>
                 <Grid Margin="16,20,16,16" VerticalAlignment="Stretch">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>

@@ -186,6 +186,15 @@ public class DatabaseService
         await connection.ExecuteAsync("DELETE FROM sessions WHERE id = @Id", new { Id = id });
     }
 
+    public async Task UpdateSessionOptionsAsync(int sessionId, string optionsJson)
+    {
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+        await connection.ExecuteAsync(
+            "UPDATE sessions SET options_json = @OptionsJson WHERE id = @Id",
+            new { OptionsJson = optionsJson, Id = sessionId });
+    }
+
     // Commit operations
     public async Task<int> InsertOrIgnoreCommitAsync(Commit commit)
     {
@@ -314,6 +323,50 @@ public class DatabaseService
             WHERE session_id = @SessionId
             ORDER BY day DESC";
         return await connection.QueryAsync<Models.Day>(sql, new { SessionId = sessionId });
+    }
+
+    // Checkpoint operations
+    public async Task<Checkpoint?> GetCheckpointAsync(int sessionId, CheckpointPhase phase, string cursorKey)
+    {
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+        var sql = @"
+            SELECT
+                session_id AS SessionId,
+                phase AS Phase,
+                cursor_key AS CursorKey,
+                cursor_value AS CursorValue,
+                updated_at AS UpdatedAt
+            FROM checkpoints
+            WHERE session_id = @SessionId AND phase = @Phase AND cursor_key = @CursorKey
+            LIMIT 1";
+        return await connection.QueryFirstOrDefaultAsync<Checkpoint>(sql, new
+        {
+            SessionId = sessionId,
+            Phase = phase.ToString(),
+            CursorKey = cursorKey
+        });
+    }
+
+    public async Task UpsertCheckpointAsync(Checkpoint checkpoint)
+    {
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+        var sql = @"
+            INSERT INTO checkpoints (session_id, phase, cursor_key, cursor_value, updated_at)
+            VALUES (@SessionId, @Phase, @CursorKey, @CursorValue, @UpdatedAt)
+            ON CONFLICT(session_id, phase, cursor_key) DO UPDATE SET
+                cursor_value = @CursorValue,
+                updated_at = @UpdatedAt";
+
+        await connection.ExecuteAsync(sql, new
+        {
+            checkpoint.SessionId,
+            Phase = checkpoint.Phase.ToString(),
+            checkpoint.CursorKey,
+            checkpoint.CursorValue,
+            checkpoint.UpdatedAt
+        });
     }
 
     // Day summary operations

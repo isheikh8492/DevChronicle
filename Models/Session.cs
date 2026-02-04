@@ -20,6 +20,7 @@ public class SessionOptions
     public int WindowSizeDays { get; set; } = 14;
     public int MaxBulletsPerDay { get; set; } = 6;
     public int MaxTokens { get; set; } = 2000;
+    public string BackfillOrder { get; set; } = "OldestFirst";
 }
 
 public class AuthorFilter
