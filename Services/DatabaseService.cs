@@ -199,6 +199,33 @@ public class DatabaseService
         return await connection.ExecuteAsync(sql, commit);
     }
 
+    public async Task<int> BatchInsertCommitsAsync(List<Commit> commits)
+    {
+        if (commits == null || commits.Count == 0)
+            return 0;
+
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+
+        using var transaction = connection.BeginTransaction();
+        try
+        {
+            var sql = @"
+                INSERT OR IGNORE INTO commits
+                (session_id, sha, author_date, author_name, author_email, subject, additions, deletions, files_json, is_merge, reachable_from_main)
+                VALUES (@SessionId, @Sha, @AuthorDate, @AuthorName, @AuthorEmail, @Subject, @Additions, @Deletions, @FilesJson, @IsMerge, @ReachableFromMain)";
+
+            var rowsAffected = await connection.ExecuteAsync(sql, commits, transaction);
+            transaction.Commit();
+            return rowsAffected;
+        }
+        catch
+        {
+            transaction.Rollback();
+            throw;
+        }
+    }
+
     public async Task<IEnumerable<Commit>> GetCommitsForDayAsync(int sessionId, DateTime day)
     {
         using var connection = GetConnection();
@@ -238,6 +265,37 @@ public class DatabaseService
                 status = @Status";
 
         await connection.ExecuteAsync(sql, day);
+    }
+
+    public async Task<int> BatchUpsertDaysAsync(List<Models.Day> days)
+    {
+        if (days == null || days.Count == 0)
+            return 0;
+
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+
+        using var transaction = connection.BeginTransaction();
+        try
+        {
+            var sql = @"
+                INSERT INTO days (session_id, day, commit_count, additions, deletions, status)
+                VALUES (@SessionId, @Date, @CommitCount, @Additions, @Deletions, @Status)
+                ON CONFLICT(session_id, day) DO UPDATE SET
+                    commit_count = @CommitCount,
+                    additions = @Additions,
+                    deletions = @Deletions,
+                    status = @Status";
+
+            var rowsAffected = await connection.ExecuteAsync(sql, days, transaction);
+            transaction.Commit();
+            return rowsAffected;
+        }
+        catch
+        {
+            transaction.Rollback();
+            throw;
+        }
     }
 
     public async Task<IEnumerable<Models.Day>> GetDaysAsync(int sessionId)

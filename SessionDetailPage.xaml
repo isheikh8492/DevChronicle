@@ -1,0 +1,500 @@
+<Page x:Class="DevChronicle.SessionDetailPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+      Title="Session Detail"
+      Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <Grid Margin="56,24,56,24">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/> <!-- Session Header -->
+                <RowDefinition Height="Auto"/> <!-- Phase Tabs -->
+                <RowDefinition Height="*"/>    <!-- Day Browser -->
+            </Grid.RowDefinitions>
+
+            <!-- Session Header Card -->
+            <ui:Card Grid.Row="0" Margin="0,0,0,16">
+                <Border Padding="20">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Session Info -->
+                        <StackPanel Grid.Row="0" Grid.Column="0">
+                            <TextBlock FontSize="24" FontWeight="SemiBold" Text="{Binding Session.Name, FallbackValue='Loading...', TargetNullValue='Loading...'}"/>
+                            <TextBlock FontSize="14" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,4,0,0">
+                                <Run Text="Repository: "/>
+                                <Run Text="{Binding Session.RepoPath, FallbackValue='...', TargetNullValue='...'}"/>
+                            </TextBlock>
+                            <TextBlock FontSize="14" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,2,0,0">
+                                <Run Text="Created: "/>
+                                <Run Text="{Binding Session.CreatedAt, StringFormat='yyyy-MM-dd HH:mm', FallbackValue='...', TargetNullValue='...'}"/>
+                            </TextBlock>
+                        </StackPanel>
+
+                        <!-- Actions -->
+                        <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <ui:Button Content="Back to Sessions"
+                                       Icon="{ui:SymbolIcon ArrowLeft24}"
+                                       Appearance="Secondary"
+                                       Command="{Binding BackToSessionsCommand}"
+                                       Margin="0,0,8,0"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </ui:Card>
+
+            <!-- Phase Tabs -->
+            <ui:TabView Grid.Row="1" Margin="0,0,0,16">
+
+                <!-- PHASE A: Mining Tab -->
+                <ui:TabViewItem Header="Mining">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="0,12,0,0">
+
+                            <!-- Mining Controls Card -->
+                            <ui:Card Margin="0,0,0,12">
+                                <Border Padding="24">
+                                    <StackPanel>
+                                        <TextBlock Text="Mine Git History" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                        <TextBlock Text="Extract commits and changes from your repository"
+                                                   FontSize="13"
+                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                   Margin="0,0,0,20"/>
+
+                                        <!-- Quick Actions -->
+                                        <TextBlock Text="Quick Actions" FontSize="14" FontWeight="Medium" Margin="0,0,0,12"/>
+                                        <UniformGrid Columns="3" Rows="1">
+                                            <ui:Button Content="Last 7 Days"
+                                                       Icon="{ui:SymbolIcon Calendar24}"
+                                                       Appearance="Primary"
+                                                       Command="{Binding Mining.MineLast7DaysCommand}"
+                                                       IsEnabled="{Binding Mining.IsMining, Converter={StaticResource InverseBoolConverter}}"
+                                                       Margin="0,0,8,0"
+                                                       Height="48"/>
+                                            <ui:Button Content="Last 14 Days"
+                                                       Icon="{ui:SymbolIcon Calendar24}"
+                                                       Appearance="Primary"
+                                                       Command="{Binding Mining.MineLastDaysCommand}"
+                                                       IsEnabled="{Binding Mining.IsMining, Converter={StaticResource InverseBoolConverter}}"
+                                                       Margin="0,0,8,0"
+                                                       Height="48"/>
+                                            <ui:Button Content="Last 30 Days"
+                                                       Icon="{ui:SymbolIcon Calendar24}"
+                                                       Appearance="Primary"
+                                                       Command="{Binding Mining.MineLast30DaysCommand}"
+                                                       IsEnabled="{Binding Mining.IsMining, Converter={StaticResource InverseBoolConverter}}"
+                                                       Height="48"/>
+                                        </UniformGrid>
+
+                                        <!-- Stop Button -->
+                                        <ui:Button Content="Stop Mining"
+                                                   Icon="{ui:SymbolIcon Stop24}"
+                                                   Appearance="Danger"
+                                                   Command="{Binding Mining.StopCommand}"
+                                                   IsEnabled="{Binding Mining.IsMining}"
+                                                   Margin="0,16,0,0"
+                                                   HorizontalAlignment="Stretch"
+                                                   Height="40"/>
+                                    </StackPanel>
+                                </Border>
+                            </ui:Card>
+
+                            <!-- Mining Progress Card -->
+                            <ui:Card>
+                                <Border Padding="24">
+                                    <StackPanel>
+                                        <Grid Margin="0,0,0,16">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <ui:SymbolIcon Grid.Column="0" Symbol="ChartMultiple24" FontSize="20" Margin="0,0,12,0"/>
+                                            <StackPanel Grid.Column="1">
+                                                <TextBlock Text="Mining Progress" FontSize="16" FontWeight="SemiBold"/>
+                                                <TextBlock Text="{Binding Mining.Status}"
+                                                           FontSize="12"
+                                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                           TextWrapping="Wrap"
+                                                           Margin="0,2,0,0"/>
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <ProgressBar Height="6"
+                                                     IsIndeterminate="{Binding Mining.IsMining}"
+                                                     Value="{Binding Mining.Progress}"
+                                                     Margin="0,0,0,20"/>
+
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <Border Grid.Column="0"
+                                                    Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
+                                                    CornerRadius="8"
+                                                    Padding="16"
+                                                    Margin="0,0,8,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="DAYS MINED"
+                                                               FontSize="11"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                               Margin="0,0,0,8"/>
+                                                    <TextBlock Text="{Binding Mining.DaysMined}"
+                                                               FontSize="32"
+                                                               FontWeight="Bold"/>
+                                                </StackPanel>
+                                            </Border>
+
+                                            <Border Grid.Column="1"
+                                                    Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
+                                                    CornerRadius="8"
+                                                    Padding="16"
+                                                    Margin="8,0,0,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="COMMITS FOUND"
+                                                               FontSize="11"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                               Margin="0,0,0,8"/>
+                                                    <TextBlock Text="{Binding Mining.CommitsFound}"
+                                                               FontSize="32"
+                                                               FontWeight="Bold"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+                            </ui:Card>
+                        </StackPanel>
+                    </ScrollViewer>
+                </ui:TabViewItem>
+
+                <!-- PHASE B: Summarization Tab -->
+                <ui:TabViewItem Header="Summarization">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="0,12,0,0">
+
+                            <!-- Summarization Controls Card -->
+                            <ui:Card Margin="0,0,0,12">
+                                <Border Padding="24">
+                                    <StackPanel>
+                                        <TextBlock Text="AI Summarization" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                        <TextBlock Text="Generate concise summaries of your daily development work"
+                                                   FontSize="13"
+                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                   Margin="0,0,0,20"/>
+
+                                        <ui:Button Content="Summarize All Pending Days"
+                                                   Icon="{ui:SymbolIcon Sparkle24}"
+                                                   Appearance="Primary"
+                                                   Command="{Binding Summarization.SummarizePendingDaysCommand}"
+                                                   IsEnabled="{Binding Summarization.IsSummarizing, Converter={StaticResource InverseBoolConverter}}"
+                                                   Height="48"
+                                                   HorizontalAlignment="Stretch"
+                                                   Margin="0,0,0,12"/>
+
+                                        <ui:Button Content="Stop Summarization"
+                                                   Icon="{ui:SymbolIcon Stop24}"
+                                                   Appearance="Danger"
+                                                   Command="{Binding Summarization.StopCommand}"
+                                                   IsEnabled="{Binding Summarization.IsSummarizing}"
+                                                   Height="40"
+                                                   HorizontalAlignment="Stretch"/>
+                                    </StackPanel>
+                                </Border>
+                            </ui:Card>
+
+                            <!-- Summarization Progress Card -->
+                            <ui:Card>
+                                <Border Padding="24">
+                                    <StackPanel>
+                                        <Grid Margin="0,0,0,16">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <ui:SymbolIcon Grid.Column="0" Symbol="Sparkle24" FontSize="20" Margin="0,0,12,0"/>
+                                            <StackPanel Grid.Column="1">
+                                                <TextBlock Text="Summarization Progress" FontSize="16" FontWeight="SemiBold"/>
+                                                <TextBlock Text="{Binding Summarization.Status}"
+                                                           FontSize="12"
+                                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                           TextWrapping="Wrap"
+                                                           Margin="0,2,0,0"/>
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <ProgressBar Height="6"
+                                                     IsIndeterminate="{Binding Summarization.IsSummarizing}"
+                                                     Value="{Binding Summarization.Progress}"
+                                                     Margin="0,0,0,20"/>
+
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <Border Grid.Column="0"
+                                                    Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
+                                                    CornerRadius="8"
+                                                    Padding="16"
+                                                    Margin="0,0,8,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="SUMMARIZED"
+                                                               FontSize="11"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                               Margin="0,0,0,8"/>
+                                                    <TextBlock Text="{Binding Summarization.DaysSummarized}"
+                                                               FontSize="32"
+                                                               FontWeight="Bold"/>
+                                                </StackPanel>
+                                            </Border>
+
+                                            <Border Grid.Column="1"
+                                                    Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
+                                                    CornerRadius="8"
+                                                    Padding="16"
+                                                    Margin="8,0,0,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="PENDING"
+                                                               FontSize="11"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                               Margin="0,0,0,8"/>
+                                                    <TextBlock Text="{Binding Summarization.PendingDays}"
+                                                               FontSize="32"
+                                                               FontWeight="Bold"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+                            </ui:Card>
+                        </StackPanel>
+                    </ScrollViewer>
+                </ui:TabViewItem>
+
+                <!-- PHASE C: Export Tab -->
+                <ui:TabViewItem Header="Export">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="0,12,0,0">
+
+                            <!-- Date Range Card -->
+                            <ui:Card Margin="0,0,0,12">
+                                <Border Padding="24">
+                                    <StackPanel>
+                                        <TextBlock Text="Export to Markdown" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                        <TextBlock Text="Generate markdown files from your development history"
+                                                   FontSize="13"
+                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                   Margin="0,0,0,20"/>
+
+                                        <TextBlock Text="Date Range" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,12"/>
+
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <Border Grid.Column="0"
+                                                    Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
+                                                    CornerRadius="8"
+                                                    Padding="12"
+                                                    Margin="0,0,8,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="FROM DATE"
+                                                               FontSize="10"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                               Margin="0,0,0,6"/>
+                                                    <DatePicker SelectedDate="{Binding Export.StartDate}"
+                                                                BorderThickness="0"
+                                                                Background="Transparent"/>
+                                                </StackPanel>
+                                            </Border>
+
+                                            <ui:SymbolIcon Grid.Column="1"
+                                                           Symbol="ArrowRight24"
+                                                           VerticalAlignment="Center"
+                                                           Margin="12,0"/>
+
+                                            <Border Grid.Column="2"
+                                                    Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
+                                                    CornerRadius="8"
+                                                    Padding="12"
+                                                    Margin="8,0,0,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="TO DATE"
+                                                               FontSize="10"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                               Margin="0,0,0,6"/>
+                                                    <DatePicker SelectedDate="{Binding Export.EndDate}"
+                                                                BorderThickness="0"
+                                                                Background="Transparent"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+                            </ui:Card>
+
+                            <!-- Export Options Card -->
+                            <ui:Card>
+                                <Border Padding="24">
+                                    <StackPanel>
+                                        <TextBlock Text="Export Formats" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,16"/>
+
+                                        <!-- Developer Diary -->
+                                        <Border Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
+                                                CornerRadius="8"
+                                                Padding="20"
+                                                Margin="0,0,0,12">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <ui:SymbolIcon Grid.Column="0"
+                                                               Symbol="Document24"
+                                                               FontSize="32"
+                                                               Margin="0,0,16,0"
+                                                               VerticalAlignment="Center"/>
+
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                    <TextBlock Text="Developer Diary" FontWeight="SemiBold" FontSize="15" Margin="0,0,0,4"/>
+                                                    <TextBlock Text="Chronological diary with daily summaries and bullet points"
+                                                               FontSize="12"
+                                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                               TextWrapping="Wrap"/>
+                                                </StackPanel>
+
+                                                <ui:Button Grid.Column="2"
+                                                           Content="Export"
+                                                           Icon="{ui:SymbolIcon ArrowExport24}"
+                                                           Appearance="Primary"
+                                                           Command="{Binding Export.ExportDeveloperDiaryCommand}"
+                                                           VerticalAlignment="Center"
+                                                           Height="40"
+                                                           Padding="20,0"/>
+                                            </Grid>
+                                        </Border>
+
+                                        <!-- Resume Bullets -->
+                                        <Border Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
+                                                CornerRadius="8"
+                                                Padding="20">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <ui:SymbolIcon Grid.Column="0"
+                                                               Symbol="DocumentBulletList24"
+                                                               FontSize="32"
+                                                               Margin="0,0,16,0"
+                                                               VerticalAlignment="Center"/>
+
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                    <TextBlock Text="Resume Bullets" FontWeight="SemiBold" FontSize="15" Margin="0,0,0,4"/>
+                                                    <TextBlock Text="Condensed achievements in 6-12 bullet points, perfect for resumes"
+                                                               FontSize="12"
+                                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                               TextWrapping="Wrap"/>
+                                                </StackPanel>
+
+                                                <ui:Button Grid.Column="2"
+                                                           Content="Export"
+                                                           Icon="{ui:SymbolIcon ArrowExport24}"
+                                                           Appearance="Primary"
+                                                           Command="{Binding Export.ExportResumeBulletsCommand}"
+                                                           VerticalAlignment="Center"
+                                                           Height="40"
+                                                           Padding="20,0"/>
+                                            </Grid>
+                                        </Border>
+                                    </StackPanel>
+                                </Border>
+                            </ui:Card>
+                        </StackPanel>
+                    </ScrollViewer>
+                </ui:TabViewItem>
+            </ui:TabView>
+
+            <!-- DAY BROWSER (Always visible below tabs) -->
+            <ui:Card Grid.Row="2">
+                <Border Padding="20">
+                    <StackPanel>
+                        <TextBlock Text="Days in This Session" FontSize="16" FontWeight="Medium" Margin="0,0,0,12"/>
+
+                        <!-- Day Cards -->
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" Height="300">
+                            <ItemsControl ItemsSource="{Binding DayBrowser.Days}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel Orientation="Horizontal"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <ui:Card Margin="0,0,8,8" Width="180" Cursor="Hand">
+                                            <ui:Card.InputBindings>
+                                                <MouseBinding MouseAction="LeftClick"
+                                                              Command="{Binding DataContext.DayBrowser.SelectDayCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                                                              CommandParameter="{Binding}"/>
+                                            </ui:Card.InputBindings>
+
+                                            <Border Padding="12">
+                                                <StackPanel>
+                                                    <TextBlock FontSize="14" FontWeight="Medium" Text="{Binding Date, StringFormat='MMM dd, yyyy'}"/>
+                                                    <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,4,0,0">
+                                                        <Run Text="{Binding CommitCount, Mode=OneWay}"/>
+                                                        <Run Text="commits"/>
+                                                    </TextBlock>
+                                                    <ui:Badge Content="{Binding Status}"
+                                                              Margin="0,8,0,0"
+                                                              Appearance="Secondary"/>
+                                                    <TextBlock FontSize="11" Margin="0,4,0,0">
+                                                        <Run Text="+"/><Run Text="{Binding Additions, Mode=OneWay}"/>
+                                                        <Run Text="/"/>
+                                                        <Run Text="-"/><Run Text="{Binding Deletions, Mode=OneWay}"/>
+                                                    </TextBlock>
+                                                </StackPanel>
+                                            </Border>
+                                        </ui:Card>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+
+                        <!-- No days message -->
+                        <ui:InfoBar Title="No Days Found"
+                                    Message="Mine commits to populate this session with days."
+                                    Severity="Informational"
+                                    IsOpen="{Binding DayBrowser.Days.Count, Converter={StaticResource CountToVisibilityConverter}}"
+                                    IsClosable="False"
+                                    Margin="0,12,0,0"/>
+                    </StackPanel>
+                </Border>
+            </ui:Card>
+        </Grid>
+    </ScrollViewer>
+</Page>

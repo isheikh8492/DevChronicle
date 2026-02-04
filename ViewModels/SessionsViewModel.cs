@@ -123,4 +123,16 @@ public partial class SessionsViewModel : ObservableObject
             });
         }
     }
+
+    [RelayCommand]
+    private void OpenSession(Session? session)
+    {
+        if (session == null) return;
+
+        // Navigate to SessionDetailPage with session ID
+        if (System.Windows.Application.Current.MainWindow is MainWindow mainWindow)
+        {
+            mainWindow.NavigateToSessionDetail(session.Id);
+        }
+    }
 }

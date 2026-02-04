@@ -64,11 +64,18 @@ public class GitService
             var parts = line.Split('|');
             if (parts.Length < 5) continue;
 
+            // Safe DateTime parsing with TryParse
+            if (!DateTime.TryParse(parts[1], out var authorDate))
+            {
+                // Skip commits with invalid dates
+                continue;
+            }
+
             var commit = new Commit
             {
                 SessionId = sessionId,
                 Sha = parts[0].Trim(),
-                AuthorDate = DateTime.Parse(parts[1]),
+                AuthorDate = authorDate,
                 AuthorName = parts[2],
                 AuthorEmail = parts[3],
                 Subject = parts[4]
@@ -93,13 +100,16 @@ public class GitService
         foreach (var line in lines)
         {
             var parts = line.Split('\t', StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length < 3) continue;
+
+            // Validate parts before accessing
+            if (parts.Length < 3 || string.IsNullOrWhiteSpace(parts[2]))
+                continue;
 
             if (int.TryParse(parts[0], out var additions) && int.TryParse(parts[1], out var deletions))
             {
                 files.Add(new CommitFile
                 {
-                    Path = parts[2],
+                    Path = parts[2].Trim(),  // Trim whitespace
                     Additions = additions,
                     Deletions = deletions
                 });

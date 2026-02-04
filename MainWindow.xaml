@@ -23,13 +23,11 @@
             x:Name="RootNavigationView"
             PaneDisplayMode="Left"
             IsBackButtonVisible="Collapsed"
-            IsPaneToggleVisible="True">
+            IsPaneToggleVisible="True"
+            Navigated="RootNavigationView_Navigated">
             <ui:NavigationView.MenuItems>
                 <ui:NavigationViewItem Content="Dashboard" Icon="{ui:SymbolIcon Home24}" TargetPageType="{x:Type local:DashboardPage}" />
                 <ui:NavigationViewItem Content="Sessions" Icon="{ui:SymbolIcon List24}" TargetPageType="{x:Type local:SessionsPage}" />
-                <ui:NavigationViewItem Content="Mining" Icon="{ui:SymbolIcon Database24}" TargetPageType="{x:Type local:MiningPage}" />
-                <ui:NavigationViewItem Content="Summarization" Icon="{ui:SymbolIcon Sparkle24}" TargetPageType="{x:Type local:SummarizationPage}" />
-                <ui:NavigationViewItem Content="Export" Icon="{ui:SymbolIcon ArrowExport24}" TargetPageType="{x:Type local:ExportPage}" />
             </ui:NavigationView.MenuItems>
             <ui:NavigationView.FooterMenuItems>
                 <ui:NavigationViewItem Content="Settings" Icon="{ui:SymbolIcon Settings24}" TargetPageType="{x:Type local:SettingsPage}" />
