@@ -25,7 +25,7 @@ public partial class SessionDetailViewModel : ObservableObject
     private string? errorMessage;
 
     [ObservableProperty]
-    private SessionDetailPanel selectedPanel = SessionDetailPanel.Day;
+    private SessionDetailPanel selectedPanel = SessionDetailPanel.Summarization;
 
     /// <summary>
     /// Phase A: Mining ViewModel

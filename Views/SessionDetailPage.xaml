@@ -321,46 +321,12 @@
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <ToggleButton Content="Day"
-                                              MinWidth="72"
-                                              Command="{Binding SetPanelCommand}"
-                                              CommandParameter="{x:Static vm:SessionDetailPanel.Day}"
-                                              Grid.Column="0">
-                                    <ToggleButton.Style>
-                                        <Style TargetType="ToggleButton" BasedOn="{StaticResource SegmentToggleStyle}">
-                                            <Setter Property="Margin" Value="0,0,6,0"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding SelectedPanel}" Value="{x:Static vm:SessionDetailPanel.Day}">
-                                                    <Setter Property="IsChecked" Value="True"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </ToggleButton.Style>
-                                </ToggleButton>
-                                <ToggleButton Content="Mining"
-                                              MinWidth="88"
-                                              Command="{Binding SetPanelCommand}"
-                                              CommandParameter="{x:Static vm:SessionDetailPanel.Mining}"
-                                              Grid.Column="1">
-                                    <ToggleButton.Style>
-                                        <Style TargetType="ToggleButton" BasedOn="{StaticResource SegmentToggleStyle}">
-                                            <Setter Property="Margin" Value="0,0,6,0"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding SelectedPanel}" Value="{x:Static vm:SessionDetailPanel.Mining}">
-                                                    <Setter Property="IsChecked" Value="True"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </ToggleButton.Style>
-                                </ToggleButton>
                                 <ToggleButton Content="Summarization"
                                               MinWidth="140"
                                               Command="{Binding SetPanelCommand}"
                                               CommandParameter="{x:Static vm:SessionDetailPanel.Summarization}"
-                                              Grid.Column="2">
+                                              Grid.Column="0">
                                     <ToggleButton.Style>
                                         <Style TargetType="ToggleButton" BasedOn="{StaticResource SegmentToggleStyle}">
                                             <Setter Property="Margin" Value="0,0,6,0"/>
@@ -376,7 +342,7 @@
                                               MinWidth="80"
                                               Command="{Binding SetPanelCommand}"
                                               CommandParameter="{x:Static vm:SessionDetailPanel.Export}"
-                                              Grid.Column="3">
+                                              Grid.Column="1">
                                     <ToggleButton.Style>
                                         <Style TargetType="ToggleButton" BasedOn="{StaticResource SegmentToggleStyle}">
                                             <Style.Triggers>
@@ -392,83 +358,6 @@
 
                         <!-- Panel Content -->
                         <Grid Grid.Row="2" VerticalAlignment="Top">
-                            <!-- Day Panel -->
-                            <Grid Visibility="Collapsed">
-                                <Grid.Style>
-                                    <Style TargetType="Grid">
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding SelectedPanel}" Value="{x:Static vm:SessionDetailPanel.Day}">
-                                                <Setter Property="Visibility" Value="Visible"/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Grid.Style>
-                                <Grid>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
-                                    </Grid.RowDefinitions>
-                                    <TextBlock Grid.Row="0" Text="Summary" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                                    <Border Grid.Row="1" Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
-                                            CornerRadius="8"
-                                            Padding="12">
-                                        <TextBlock Text="Summary pending or viewable in tools."
-                                                   FontSize="12"
-                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                   TextWrapping="Wrap"/>
-                                    </Border>
-                                </Grid>
-                            </Grid>
-
-                            <!-- Mining Panel -->
-                            <Grid Visibility="Collapsed">
-                                <Grid.Style>
-                                    <Style TargetType="Grid">
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding SelectedPanel}" Value="{x:Static vm:SessionDetailPanel.Mining}">
-                                                <Setter Property="Visibility" Value="Visible"/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Grid.Style>
-                                <Grid>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
-                                    </Grid.RowDefinitions>
-                                    <TextBlock Grid.Row="0" Text="Mine Git History" FontSize="16" FontWeight="SemiBold" Margin="0,4,0,12"/>
-                                    <UniformGrid Grid.Row="1" Columns="3" Rows="1" Margin="0,0,0,8">
-                                        <ui:Button Content="Last 7 Days"
-                                                   Icon="{ui:SymbolIcon Calendar24}"
-                                                   Appearance="Primary"
-                                                   Command="{Binding Mining.MineLast7DaysCommand}"
-                                                   IsEnabled="{Binding Mining.IsMining, Converter={StaticResource InverseBoolConverter}}"
-                                                   Margin="0,0,8,0"
-                                                   Height="40"/>
-                                        <ui:Button Content="Last 14 Days"
-                                                   Icon="{ui:SymbolIcon Calendar24}"
-                                                   Appearance="Primary"
-                                                   Command="{Binding Mining.MineLastDaysCommand}"
-                                                   IsEnabled="{Binding Mining.IsMining, Converter={StaticResource InverseBoolConverter}}"
-                                                   Margin="0,0,8,0"
-                                                   Height="40"/>
-                                        <ui:Button Content="Last 30 Days"
-                                                   Icon="{ui:SymbolIcon Calendar24}"
-                                                   Appearance="Primary"
-                                                   Command="{Binding Mining.MineLast30DaysCommand}"
-                                                   IsEnabled="{Binding Mining.IsMining, Converter={StaticResource InverseBoolConverter}}"
-                                                   Height="40"/>
-                                    </UniformGrid>
-                                    <ui:Button Grid.Row="2" Content="Stop Mining"
-                                               Icon="{ui:SymbolIcon Stop24}"
-                                               Appearance="Danger"
-                                               Command="{Binding Mining.StopCommand}"
-                                               IsEnabled="{Binding Mining.IsMining}"
-                                               Height="36"/>
-                                </Grid>
-                            </Grid>
-
                             <!-- Summarization Panel -->
                             <Grid Visibility="Collapsed">
                                 <Grid.Style>
