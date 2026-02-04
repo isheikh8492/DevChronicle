@@ -4,7 +4,7 @@ using DevChronicle.Models;
 using Wpf.Ui.Controls;
 using WinForms = System.Windows.Forms;
 
-namespace DevChronicle.Windows;
+namespace DevChronicle.Views.Windows;
 
 public partial class CreateSessionDialog : FluentWindow
 {

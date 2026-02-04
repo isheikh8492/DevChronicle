@@ -4,7 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DevChronicle.Models;
 using DevChronicle.Services;
-using DevChronicle.Windows;
+using DevChronicle.Views.Windows;
 
 namespace DevChronicle.ViewModels;
 

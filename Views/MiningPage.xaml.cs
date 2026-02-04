@@ -2,21 +2,20 @@ using System.Windows.Controls;
 using DevChronicle.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace DevChronicle
+namespace DevChronicle.Views
 {
     /// <summary>
-    /// Interaction logic for SessionsPage.xaml
+    /// Interaction logic for MiningPage.xaml
     /// </summary>
-    public partial class SessionsPage : Page
+    public partial class MiningPage : Page
     {
-        public SessionsPage()
+        public MiningPage()
         {
             InitializeComponent();
 
-            // Get ViewModel from DI
             if (App.ServiceProvider != null)
             {
-                DataContext = App.ServiceProvider.GetRequiredService<SessionsViewModel>();
+                DataContext = App.ServiceProvider.GetRequiredService<MiningViewModel>();
             }
         }
     }

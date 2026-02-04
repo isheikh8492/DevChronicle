@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:DevChronicle"
+        xmlns:views="clr-namespace:DevChronicle.Views"
         xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
         mc:Ignorable="d"
         Title="DevChronicle"
@@ -26,11 +27,11 @@
             IsPaneToggleVisible="True"
             Navigated="RootNavigationView_Navigated">
             <ui:NavigationView.MenuItems>
-                <ui:NavigationViewItem Content="Dashboard" Icon="{ui:SymbolIcon Home24}" TargetPageType="{x:Type local:DashboardPage}" />
-                <ui:NavigationViewItem Content="Sessions" Icon="{ui:SymbolIcon List24}" TargetPageType="{x:Type local:SessionsPage}" />
+                <ui:NavigationViewItem Content="Dashboard" Icon="{ui:SymbolIcon Home24}" TargetPageType="{x:Type views:DashboardPage}" />
+                <ui:NavigationViewItem Content="Sessions" Icon="{ui:SymbolIcon List24}" TargetPageType="{x:Type views:SessionsPage}" />
             </ui:NavigationView.MenuItems>
             <ui:NavigationView.FooterMenuItems>
-                <ui:NavigationViewItem Content="Settings" Icon="{ui:SymbolIcon Settings24}" TargetPageType="{x:Type local:SettingsPage}" />
+                <ui:NavigationViewItem Content="Settings" Icon="{ui:SymbolIcon Settings24}" TargetPageType="{x:Type views:SettingsPage}" />
             </ui:NavigationView.FooterMenuItems>
         </ui:NavigationView>
     </Grid>

@@ -2,20 +2,21 @@ using System.Windows.Controls;
 using DevChronicle.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace DevChronicle
+namespace DevChronicle.Views
 {
     /// <summary>
-    /// Interaction logic for DashboardPage.xaml
+    /// Interaction logic for SessionsPage.xaml
     /// </summary>
-    public partial class DashboardPage : Page
+    public partial class SessionsPage : Page
     {
-        public DashboardPage()
+        public SessionsPage()
         {
             InitializeComponent();
 
+            // Get ViewModel from DI
             if (App.ServiceProvider != null)
             {
-                DataContext = App.ServiceProvider.GetRequiredService<DashboardViewModel>();
+                DataContext = App.ServiceProvider.GetRequiredService<SessionsViewModel>();
             }
         }
     }

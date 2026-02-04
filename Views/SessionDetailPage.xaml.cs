@@ -2,7 +2,7 @@ using System.Windows.Controls;
 using DevChronicle.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace DevChronicle;
+namespace DevChronicle.Views;
 
 /// <summary>
 /// Interaction logic for SessionDetailPage.xaml

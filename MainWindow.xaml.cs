@@ -1,6 +1,7 @@
 ﻿using System.Windows;
 using Wpf.Ui.Appearance;
 using Wpf.Ui.Controls;
+using DevChronicle.Views;
 
 namespace DevChronicle
 {

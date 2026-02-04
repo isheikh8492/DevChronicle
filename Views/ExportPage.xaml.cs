@@ -1,6 +1,6 @@
 using System.Windows.Controls;
 
-namespace DevChronicle
+namespace DevChronicle.Views
 {
     /// <summary>
     /// Interaction logic for ExportPage.xaml
