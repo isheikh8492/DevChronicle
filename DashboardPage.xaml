@@ -1,0 +1,65 @@
+<Page x:Class="DevChronicle.DashboardPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+      Title="Dashboard"
+      Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+
+    <ScrollViewer>
+        <StackPanel Margin="56,24,56,24">
+            <TextBlock
+                FontSize="28"
+                FontWeight="SemiBold"
+                Text="Welcome to DevChronicle"
+                Margin="0,0,0,8"/>
+            <TextBlock
+                FontSize="14"
+                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                Text="Session-based developer diary and resume generator from Git history."
+                Margin="0,0,0,32"/>
+
+            <ui:CardExpander Icon="{ui:SymbolIcon Rocket24}" Margin="0,0,0,8">
+                <ui:CardExpander.Header>
+                    <StackPanel>
+                        <TextBlock FontSize="16" FontWeight="Medium" Text="Quick Start" />
+                        <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Get started with DevChronicle" />
+                    </StackPanel>
+                </ui:CardExpander.Header>
+                <StackPanel Margin="0,12,0,0">
+                    <ui:Button
+                        Content="Create New Session"
+                        Icon="{ui:SymbolIcon Add24}"
+                        Appearance="Primary"
+                        Margin="0,0,0,8"
+                        HorizontalAlignment="Left"/>
+                    <ui:Button
+                        Content="Open Existing Session"
+                        Icon="{ui:SymbolIcon FolderOpen24}"
+                        Margin="0,0,0,8"
+                        HorizontalAlignment="Left"/>
+                    <ui:Button
+                        Content="Export Results"
+                        Icon="{ui:SymbolIcon ArrowExport24}"
+                        HorizontalAlignment="Left"/>
+                </StackPanel>
+            </ui:CardExpander>
+
+            <ui:Card Margin="0,8,0,8">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <ui:SymbolIcon Grid.Column="0" Symbol="Info24" Margin="0,0,16,0" FontSize="20"/>
+                    <StackPanel Grid.Column="1">
+                        <TextBlock FontSize="14" FontWeight="Medium" Text="Recent Activity" Margin="0,0,0,4"/>
+                        <TextBlock
+                            FontSize="12"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                            Text="No sessions found. Create a new session to start mining your Git history."/>
+                    </StackPanel>
+                </Grid>
+            </ui:Card>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

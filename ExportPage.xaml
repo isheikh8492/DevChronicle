@@ -1,0 +1,85 @@
+<Page x:Class="DevChronicle.ExportPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+      Title="Export"
+      Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+
+    <ScrollViewer>
+        <StackPanel Margin="56,24,56,24">
+            <TextBlock
+                FontSize="28"
+                FontWeight="SemiBold"
+                Text="Export"
+                Margin="0,0,0,8"/>
+            <TextBlock
+                FontSize="14"
+                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                Text="Export developer diary and resume bullets to markdown files."
+                Margin="0,0,0,24"/>
+
+            <ui:Card Margin="0,0,0,16">
+                <StackPanel Margin="20">
+                    <TextBlock FontSize="16" FontWeight="Medium" Text="Date Range" Margin="0,0,0,16"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="200"/>
+                            <ColumnDefinition Width="32"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="200"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="From:" VerticalAlignment="Center" Margin="0,0,12,0" FontSize="14"/>
+                        <DatePicker Grid.Column="1"/>
+                        <TextBlock Grid.Column="3" Text="To:" VerticalAlignment="Center" Margin="0,0,12,0" FontSize="14"/>
+                        <DatePicker Grid.Column="4"/>
+                    </Grid>
+                </StackPanel>
+            </ui:Card>
+
+            <ui:Card>
+                <StackPanel Margin="20">
+                    <TextBlock FontSize="16" FontWeight="Medium" Text="Export Options" Margin="0,0,0,16"/>
+                    <StackPanel>
+                        <ui:Button
+                            Content="Export Developer Diary"
+                            Icon="{ui:SymbolIcon DocumentText24}"
+                            Appearance="Primary"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Left"
+                            Padding="12,8"/>
+                        <TextBlock
+                            FontSize="12"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                            Text="Bullet-only diary with date lines and daily summaries"
+                            Margin="16,0,0,16"/>
+
+                        <ui:Button
+                            Content="Export Resume Bullets"
+                            Icon="{ui:SymbolIcon DocumentBulletList24}"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Left"
+                            Padding="12,8"/>
+                        <TextBlock
+                            FontSize="12"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                            Text="6-12 key bullets extracted from the selected range"
+                            Margin="16,0,0,16"/>
+
+                        <ui:Button
+                            Content="Export Session Archive"
+                            Icon="{ui:SymbolIcon Archive24}"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Left"
+                            Padding="12,8"/>
+                        <TextBlock
+                            FontSize="12"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                            Text="JSON archive with session settings, summaries, and evidence"
+                            Margin="16,0,0,0"/>
+                    </StackPanel>
+                </StackPanel>
+            </ui:Card>
+        </StackPanel>
+    </ScrollViewer>
+</Page>
