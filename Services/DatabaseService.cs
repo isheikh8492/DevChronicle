@@ -129,6 +129,8 @@ public class DatabaseService
     public async Task<int> CreateSessionAsync(Session session)
     {
         using var connection = GetConnection();
+        await connection.OpenAsync();
+
         var sql = @"
             INSERT INTO sessions (name, repo_path, main_branch, created_at, author_filters_json, options_json, range_start, range_end)
             VALUES (@Name, @RepoPath, @MainBranch, @CreatedAt, @AuthorFiltersJson, @OptionsJson, @RangeStart, @RangeEnd);
@@ -140,19 +142,47 @@ public class DatabaseService
     public async Task<IEnumerable<Session>> GetAllSessionsAsync()
     {
         using var connection = GetConnection();
-        return await connection.QueryAsync<Session>("SELECT * FROM sessions ORDER BY created_at DESC");
+        await connection.OpenAsync();
+        var sql = @"
+            SELECT
+                id AS Id,
+                name AS Name,
+                repo_path AS RepoPath,
+                main_branch AS MainBranch,
+                created_at AS CreatedAt,
+                author_filters_json AS AuthorFiltersJson,
+                options_json AS OptionsJson,
+                range_start AS RangeStart,
+                range_end AS RangeEnd
+            FROM sessions
+            ORDER BY created_at DESC";
+        return await connection.QueryAsync<Session>(sql);
     }
 
     public async Task<Session?> GetSessionAsync(int id)
     {
         using var connection = GetConnection();
-        return await connection.QueryFirstOrDefaultAsync<Session>(
-            "SELECT * FROM sessions WHERE id = @Id", new { Id = id });
+        await connection.OpenAsync();
+        var sql = @"
+            SELECT
+                id AS Id,
+                name AS Name,
+                repo_path AS RepoPath,
+                main_branch AS MainBranch,
+                created_at AS CreatedAt,
+                author_filters_json AS AuthorFiltersJson,
+                options_json AS OptionsJson,
+                range_start AS RangeStart,
+                range_end AS RangeEnd
+            FROM sessions
+            WHERE id = @Id";
+        return await connection.QueryFirstOrDefaultAsync<Session>(sql, new { Id = id });
     }
 
     public async Task DeleteSessionAsync(int id)
     {
         using var connection = GetConnection();
+        await connection.OpenAsync();
         await connection.ExecuteAsync("DELETE FROM sessions WHERE id = @Id", new { Id = id });
     }
 
@@ -160,6 +190,7 @@ public class DatabaseService
     public async Task<int> InsertOrIgnoreCommitAsync(Commit commit)
     {
         using var connection = GetConnection();
+        await connection.OpenAsync();
         var sql = @"
             INSERT OR IGNORE INTO commits
             (session_id, sha, author_date, author_name, author_email, subject, additions, deletions, files_json, is_merge, reachable_from_main)
@@ -171,16 +202,32 @@ public class DatabaseService
     public async Task<IEnumerable<Commit>> GetCommitsForDayAsync(int sessionId, DateTime day)
     {
         using var connection = GetConnection();
+        await connection.OpenAsync();
         var dayStart = day.Date.ToString("yyyy-MM-dd");
-        return await connection.QueryAsync<Commit>(
-            "SELECT * FROM commits WHERE session_id = @SessionId AND DATE(author_date) = @Day ORDER BY author_date",
-            new { SessionId = sessionId, Day = dayStart });
+        var sql = @"
+            SELECT
+                session_id AS SessionId,
+                sha AS Sha,
+                author_date AS AuthorDate,
+                author_name AS AuthorName,
+                author_email AS AuthorEmail,
+                subject AS Subject,
+                additions AS Additions,
+                deletions AS Deletions,
+                files_json AS FilesJson,
+                is_merge AS IsMerge,
+                reachable_from_main AS ReachableFromMain
+            FROM commits
+            WHERE session_id = @SessionId AND DATE(author_date) = @Day
+            ORDER BY author_date";
+        return await connection.QueryAsync<Commit>(sql, new { SessionId = sessionId, Day = dayStart });
     }
 
     // Day operations
-    public async Task UpsertDayAsync(Day day)
+    public async Task UpsertDayAsync(Models.Day day)
     {
         using var connection = GetConnection();
+        await connection.OpenAsync();
         var sql = @"
             INSERT INTO days (session_id, day, commit_count, additions, deletions, status)
             VALUES (@SessionId, @Date, @CommitCount, @Additions, @Deletions, @Status)
@@ -193,11 +240,21 @@ public class DatabaseService
         await connection.ExecuteAsync(sql, day);
     }
 
-    public async Task<IEnumerable<Day>> GetDaysAsync(int sessionId)
+    public async Task<IEnumerable<Models.Day>> GetDaysAsync(int sessionId)
     {
         using var connection = GetConnection();
-        return await connection.QueryAsync<Day>(
-            "SELECT * FROM days WHERE session_id = @SessionId ORDER BY day DESC",
-            new { SessionId = sessionId });
+        await connection.OpenAsync();
+        var sql = @"
+            SELECT
+                session_id AS SessionId,
+                day AS Date,
+                commit_count AS CommitCount,
+                additions AS Additions,
+                deletions AS Deletions,
+                status AS Status
+            FROM days
+            WHERE session_id = @SessionId
+            ORDER BY day DESC";
+        return await connection.QueryAsync<Models.Day>(sql, new { SessionId = sessionId });
     }
 }

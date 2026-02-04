@@ -1,8 +1,10 @@
 using System.Collections.ObjectModel;
+using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DevChronicle.Models;
 using DevChronicle.Services;
+using DevChronicle.Windows;
 
 namespace DevChronicle.ViewModels;
 
@@ -24,7 +26,9 @@ public partial class SessionsViewModel : ObservableObject
     {
         _databaseService = databaseService;
         _gitService = gitService;
-        LoadSessionsAsync().ConfigureAwait(false);
+
+        // Load sessions without blocking constructor
+        _ = LoadSessionsAsync();
     }
 
     [RelayCommand]
@@ -34,11 +38,24 @@ public partial class SessionsViewModel : ObservableObject
         try
         {
             var sessionsList = await _databaseService.GetAllSessionsAsync();
-            Sessions.Clear();
-            foreach (var session in sessionsList)
+
+            // Ensure UI thread for ObservableCollection operations
+            await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
             {
-                Sessions.Add(session);
-            }
+                Sessions.Clear();
+                foreach (var session in sessionsList)
+                {
+                    Sessions.Add(session);
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            // Log error or show message to user
+            await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                System.Windows.MessageBox.Show($"Failed to load sessions: {ex.Message}", "Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+            });
         }
         finally
         {
@@ -49,18 +66,37 @@ public partial class SessionsViewModel : ObservableObject
     [RelayCommand]
     private async Task CreateSessionAsync()
     {
-        // TODO: Show dialog to create new session
-        var session = new Session
+        try
         {
-            Name = $"New Session {DateTime.Now:yyyy-MM-dd HH:mm}",
-            RepoPath = @"C:\Path\To\Repo", // TODO: Browse for path
-            CreatedAt = DateTime.UtcNow,
-            MainBranch = "main"
-        };
+            // Show dialog to create new session
+            var dialog = new CreateSessionDialog
+            {
+                Owner = System.Windows.Application.Current.MainWindow
+            };
 
-        var id = await _databaseService.CreateSessionAsync(session);
-        session.Id = id;
-        Sessions.Insert(0, session);
+            if (dialog.ShowDialog() == true && dialog.Result != null)
+            {
+                var session = dialog.Result;
+
+                // Save to database
+                var id = await _databaseService.CreateSessionAsync(session);
+                session.Id = id;
+
+                // Ensure UI thread for ObservableCollection operations
+                await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    Sessions.Insert(0, session);
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            // Show error message to user
+            await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                System.Windows.MessageBox.Show($"Failed to create session: {ex.Message}", "Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+            });
+        }
     }
 
     [RelayCommand]
@@ -68,7 +104,23 @@ public partial class SessionsViewModel : ObservableObject
     {
         if (session == null) return;
 
-        await _databaseService.DeleteSessionAsync(session.Id);
-        Sessions.Remove(session);
+        try
+        {
+            await _databaseService.DeleteSessionAsync(session.Id);
+
+            // Ensure UI thread for ObservableCollection operations
+            await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                Sessions.Remove(session);
+            });
+        }
+        catch (Exception ex)
+        {
+            // Show error message to user
+            await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                System.Windows.MessageBox.Show($"Failed to delete session: {ex.Message}", "Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+            });
+        }
     }
 }

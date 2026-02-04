@@ -23,18 +23,55 @@
                     Content="Create Session"
                     Icon="{ui:SymbolIcon Add24}"
                     Appearance="Primary"
+                    Command="{Binding CreateSessionCommand}"
                     Margin="0,0,12,0"/>
                 <ui:Button
-                    Content="Open Session"
-                    Icon="{ui:SymbolIcon FolderOpen24}"
+                    Content="Reload"
+                    Icon="{ui:SymbolIcon ArrowSync24}"
+                    Command="{Binding LoadSessionsCommand}"
                     Margin="0,0,12,0"/>
-                <ui:Button
-                    Content="Delete Session"
-                    Icon="{ui:SymbolIcon Delete24}"
-                    Appearance="Danger"/>
             </StackPanel>
 
-            <ui:Card>
+            <!-- Sessions List -->
+            <ItemsControl ItemsSource="{Binding Sessions}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <ui:Card Margin="0,0,0,12">
+                            <Border Padding="16">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock FontSize="16" FontWeight="Medium" Text="{Binding Name}" Margin="0,0,0,4"/>
+                                        <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                                            <Run Text="Repository: "/>
+                                            <Run Text="{Binding RepoPath}"/>
+                                        </TextBlock>
+                                        <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                                            <Run Text="Created: "/>
+                                            <Run Text="{Binding CreatedAt, StringFormat='yyyy-MM-dd HH:mm'}"/>
+                                        </TextBlock>
+                                    </StackPanel>
+
+                                    <ui:Button
+                                        Grid.Column="1"
+                                        Icon="{ui:SymbolIcon Delete24}"
+                                        Appearance="Danger"
+                                        Command="{Binding DataContext.DeleteSessionCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                                        CommandParameter="{Binding}"
+                                        VerticalAlignment="Center"/>
+                                </Grid>
+                            </Border>
+                        </ui:Card>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- No sessions message -->
+            <ui:Card Visibility="{Binding Sessions.Count, Converter={StaticResource CountToVisibilityConverter}}">
                 <Border Padding="16">
                     <Grid>
                         <Grid.ColumnDefinitions>

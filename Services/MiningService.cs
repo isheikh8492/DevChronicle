@@ -82,7 +82,7 @@ public class MiningService
 
             foreach (var dayGroup in dayGroups)
             {
-                var day = new Day
+                var day = new Models.Day
                 {
                     SessionId = sessionId,
                     Date = dayGroup.Key,

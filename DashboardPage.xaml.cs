@@ -1,4 +1,6 @@
 using System.Windows.Controls;
+using DevChronicle.ViewModels;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace DevChronicle
 {
@@ -10,6 +12,11 @@ namespace DevChronicle
         public DashboardPage()
         {
             InitializeComponent();
+
+            if (App.ServiceProvider != null)
+            {
+                DataContext = App.ServiceProvider.GetRequiredService<DashboardViewModel>();
+            }
         }
     }
 }

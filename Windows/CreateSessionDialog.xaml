@@ -1,0 +1,104 @@
+<ui:FluentWindow x:Class="DevChronicle.Windows.CreateSessionDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+        Title="Create New Session"
+        Width="600"
+        Height="400"
+        WindowStartupLocation="CenterOwner"
+        ExtendsContentIntoTitleBar="True"
+        WindowBackdropType="Mica"
+        Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,24">
+            <TextBlock
+                FontSize="24"
+                FontWeight="SemiBold"
+                Text="Create New Session"
+                Margin="0,0,0,8"/>
+            <TextBlock
+                FontSize="14"
+                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                Text="Set up a new Git repository mining session."/>
+        </StackPanel>
+
+        <!-- Form Fields -->
+        <StackPanel Grid.Row="1">
+            <!-- Session Name -->
+            <TextBlock
+                Text="Session Name"
+                FontWeight="Medium"
+                Margin="0,0,0,8"/>
+            <ui:TextBox
+                x:Name="SessionNameTextBox"
+                PlaceholderText="Enter a name for this session"
+                Margin="0,0,0,16"/>
+
+            <!-- Repository Path -->
+            <TextBlock
+                Text="Repository Path"
+                FontWeight="Medium"
+                Margin="0,0,0,8"/>
+            <Grid Margin="0,0,0,16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <ui:TextBox
+                    x:Name="RepoPathTextBox"
+                    Grid.Column="0"
+                    PlaceholderText="Select a Git repository folder"
+                    IsReadOnly="True"
+                    Margin="0,0,8,0"/>
+                <ui:Button
+                    Grid.Column="1"
+                    Content="Browse"
+                    Icon="{ui:SymbolIcon Folder24}"
+                    Click="BrowseButton_Click"/>
+            </Grid>
+
+            <!-- Main Branch -->
+            <TextBlock
+                Text="Main Branch"
+                FontWeight="Medium"
+                Margin="0,0,0,8"/>
+            <ui:TextBox
+                x:Name="MainBranchTextBox"
+                PlaceholderText="main"
+                Text="main"
+                Margin="0,0,0,16"/>
+
+            <!-- Validation Message -->
+            <ui:InfoBar
+                x:Name="ValidationInfoBar"
+                Title="Validation Error"
+                Severity="Error"
+                IsOpen="False"
+                IsClosable="True"
+                Margin="0,0,0,16"/>
+        </StackPanel>
+
+        <!-- Action Buttons -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+            <ui:Button
+                Content="Cancel"
+                Appearance="Secondary"
+                Click="CancelButton_Click"
+                Margin="0,0,8,0"
+                MinWidth="100"/>
+            <ui:Button
+                Content="Create"
+                Appearance="Primary"
+                Click="CreateButton_Click"
+                MinWidth="100"/>
+        </StackPanel>
+    </Grid>
+</ui:FluentWindow>

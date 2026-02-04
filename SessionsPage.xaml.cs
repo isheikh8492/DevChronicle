@@ -1,4 +1,6 @@
 using System.Windows.Controls;
+using DevChronicle.ViewModels;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace DevChronicle
 {
@@ -10,6 +12,12 @@ namespace DevChronicle
         public SessionsPage()
         {
             InitializeComponent();
+
+            // Get ViewModel from DI
+            if (App.ServiceProvider != null)
+            {
+                DataContext = App.ServiceProvider.GetRequiredService<SessionsViewModel>();
+            }
         }
     }
 }
