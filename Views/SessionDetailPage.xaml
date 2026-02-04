@@ -123,72 +123,161 @@
                                     <Setter Property="Background" Value="Transparent"/>
                                     <Setter Property="BorderThickness" Value="0"/>
                                     <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                    <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ListBoxItem">
+                                                <ContentPresenter />
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
                                 </Style>
                             </ListBox.ItemContainerStyle>
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
                                     <Border Margin="0,0,0,10"
                                             Padding="12"
-                                            CornerRadius="8"
-                                            Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
-                                            BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                            CornerRadius="10"
+                                            BorderBrush="#4A4F54"
                                             BorderThickness="1">
-                                        <Border.Style>
-                                            <Style TargetType="{x:Type Border}">
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType={x:Type ListBoxItem}}}" Value="True">
-                                                        <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}"/>
-                                                        <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorPrimaryBrush}"/>
-                                                        <Setter Property="BorderThickness" Value="2,1,1,1"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </Border.Style>
+                                        <Border.Background>
+                                            <SolidColorBrush Color="#3D4246"/>
+                                        </Border.Background>
+                                    <Border.Style>
+                                        <Style TargetType="{x:Type Border}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType={x:Type ListBoxItem}}}" Value="True">
+                                                    <Setter Property="BorderBrush" Value="#AFC4D9"/>
+                                                    <Setter Property="BorderThickness" Value="1.5"/>
+                                                    <DataTrigger.EnterActions>
+                                                        <BeginStoryboard>
+                                                            <Storyboard>
+                                                                <ColorAnimation Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
+                                                                                To="#3F4B5A"
+                                                                                Duration="0:0:0.15"/>
+                                                            </Storyboard>
+                                                        </BeginStoryboard>
+                                                    </DataTrigger.EnterActions>
+                                                    <DataTrigger.ExitActions>
+                                                        <BeginStoryboard>
+                                                            <Storyboard>
+                                                                <ColorAnimation Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
+                                                                                To="#3D4246"
+                                                                                Duration="0:0:0.15"/>
+                                                            </Storyboard>
+                                                        </BeginStoryboard>
+                                                    </DataTrigger.ExitActions>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
                                         <Border.InputBindings>
                                             <MouseBinding MouseAction="LeftClick"
                                                           Command="{Binding DataContext.DayBrowser.SelectDayCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
                                                           CommandParameter="{Binding}"/>
                                         </Border.InputBindings>
                                         <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="6"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
                                             <Grid.RowDefinitions>
                                                 <RowDefinition Height="Auto"/>
                                                 <RowDefinition Height="Auto"/>
                                             </Grid.RowDefinitions>
-                                            <Grid Grid.Row="0">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" FontSize="14" FontWeight="SemiBold"
-                                                           Text="{Binding Date, StringFormat=MMM dd\, yyyy}"/>
-                                                <ui:Badge Grid.Column="1" Content="{Binding Status}" Appearance="Secondary"/>
-                                            </Grid>
-                                            <Grid Grid.Row="1" Margin="0,6,0,0">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}">
-                                                    <Run Text="{Binding CommitCount, Mode=OneWay}"/><Run Text=" "/><Run Text=" commits"/>
-                                                </TextBlock>
-                                                <TextBlock Grid.Column="1" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="12,0,0,0">
-                                                    <Run Text="+"/><Run Text="{Binding Additions, Mode=OneWay}"/><Run Text=" "/><Run Text="/"/><Run Text=" "/><Run Text="-"/><Run Text="{Binding Deletions, Mode=OneWay}"/>
-                                                </TextBlock>
-                                            </Grid>
+
+                                            <Border Grid.Column="0" Grid.RowSpan="2" CornerRadius="3">
+                                                <Border.Style>
+                                                    <Style TargetType="{x:Type Border}">
+                                                        <Setter Property="Background" Value="#bd7cff"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType={x:Type ListBoxItem}}}" Value="True">
+                                                                <Setter Property="Background" Value="#8FB7E6"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                            </Border>
+
+                                            <TextBlock Grid.Column="1" Grid.Row="0"
+                                                       FontSize="14"
+                                                       FontWeight="SemiBold"
+                                                       Text="{Binding Date, StringFormat=MMM dd\, yyyy}"
+                                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                                       Margin="10,0,0,0"/>
+
+                                            <Border Grid.Column="1" Grid.Row="0"
+                                                    Background="#bd7cff"
+                                                    CornerRadius="8"
+                                                    Padding="8,4"
+                                                    HorizontalAlignment="Right"
+                                                    Margin="10,0,0,0">
+                                                <TextBlock Text="{Binding Status}"
+                                                           FontSize="12"
+                                                           Foreground="White"/>
+                                            </Border>
+
+                                            <TextBlock Grid.Column="1" Grid.Row="1"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                       Margin="10,6,0,0">
+                                                <Run Text="{Binding CommitCount, Mode=OneWay}"/><Run Text=" "/><Run Text="commits"/>
+                                            </TextBlock>
+
+                                            <TextBlock Grid.Column="1" Grid.Row="1"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                       HorizontalAlignment="Right"
+                                                       Margin="10,6,0,0">
+                                                <Run Text="+"
+                                                     Foreground="#3FB950"
+                                                     FontWeight="SemiBold"/>
+                                                <Run Text="{Binding Additions, Mode=OneWay}"
+                                                     Foreground="#3FB950"
+                                                     FontWeight="SemiBold"/>
+                                                <Run Text=" / "/>
+                                                <Run Text="-"
+                                                     Foreground="#F85149"
+                                                     FontWeight="SemiBold"/>
+                                                <Run Text="{Binding Deletions, Mode=OneWay}"
+                                                     Foreground="#F85149"
+                                                     FontWeight="SemiBold"/>
+                                            </TextBlock>
                                         </Grid>
                                     </Border>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
 
-                        <ui:InfoBar Grid.Row="2"
-                                    Title="No Days Found"
-                                    Message="Mine commits to populate this session with days."
-                                    Severity="Informational"
-                                    IsOpen="True"
-                                    Visibility="{Binding DayBrowser.Days.Count, Converter={StaticResource CountToVisibilityConverter}}"
-                                    IsClosable="False"
-                                    Margin="0,12,0,0"/>
+                        <Grid Grid.Row="2" Margin="0,12,0,0">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <ui:InfoBar Grid.Row="0"
+                                        Title="Mining in progress"
+                                        Message="{Binding Mining.Status}"
+                                        Severity="Informational"
+                                        IsOpen="True"
+                                        Visibility="{Binding Mining.IsMining, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                        IsClosable="False"/>
+
+                            <ui:InfoBar Grid.Row="1"
+                                        Title="No Days Found"
+                                        Message="Mine commits to populate this session with days."
+                                        Severity="Informational"
+                                        IsOpen="True"
+                                        IsClosable="False">
+                                <ui:InfoBar.Visibility>
+                                    <MultiBinding Converter="{StaticResource CountAndNotMiningToVisibilityConverter}">
+                                        <Binding Path="DayBrowser.Days.Count"/>
+                                        <Binding Path="Mining.IsMining"/>
+                                    </MultiBinding>
+                                </ui:InfoBar.Visibility>
+                            </ui:InfoBar>
+                        </Grid>
                 </Grid>
             </ui:Card>
 
@@ -209,14 +298,14 @@
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
                             <TextBlock Grid.Row="0" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8"
-                                       Text="{Binding DayBrowser.SelectedDay.Date, StringFormat='MMMM dd, yyyy', FallbackValue='Select a day', TargetNullValue='Select a day'}"/>
+                                       Text="{Binding DayBrowser.SelectedDay.Date, Mode=OneWay, StringFormat='MMMM dd, yyyy', FallbackValue='Select a day', TargetNullValue='Select a day'}"/>
                             <TextBlock Grid.Row="1" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}">
                                 <Run Text="Commits: "/>
-                                <Run Text="{Binding DayBrowser.SelectedDay.CommitCount, FallbackValue='-'}"/>
+                                <Run Text="{Binding DayBrowser.SelectedDay.CommitCount, Mode=OneWay, FallbackValue='-'}"/>
                                 <Run Text="   Additions: "/>
-                                <Run Text="{Binding DayBrowser.SelectedDay.Additions, FallbackValue='-'}"/>
+                                <Run Text="{Binding DayBrowser.SelectedDay.Additions, Mode=OneWay, FallbackValue='-'}"/>
                                 <Run Text="   Deletions: "/>
-                                <Run Text="{Binding DayBrowser.SelectedDay.Deletions, FallbackValue='-'}"/>
+                                <Run Text="{Binding DayBrowser.SelectedDay.Deletions, Mode=OneWay, FallbackValue='-'}"/>
                             </TextBlock>
                         </Grid>
 

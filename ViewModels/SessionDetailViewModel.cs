@@ -96,6 +96,12 @@ public partial class SessionDetailViewModel : ObservableObject
 
             // Update summarization pending count
             await Summarization.UpdatePendingCountAsync();
+
+            // Auto-start mining when a new session has no days yet
+            if (DayBrowser.Days.Count == 0)
+            {
+                _ = Mining.MineInitialWindowAsync();
+            }
         }
         catch (Exception ex)
         {

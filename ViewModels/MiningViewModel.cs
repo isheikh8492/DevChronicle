@@ -44,8 +44,7 @@ public partial class MiningViewModel : ObservableObject
         _sessionContext = sessionContext;
     }
 
-    [RelayCommand]
-    private async Task MineLastDaysAsync(int days = 14)
+    private async Task RunMiningAsync(int days)
     {
         if (IsMining) return;
 
@@ -147,6 +146,38 @@ public partial class MiningViewModel : ObservableObject
         }
     }
 
+    public async Task MineInitialWindowAsync()
+    {
+        var session = _sessionContext.CurrentSession;
+        if (session == null)
+        {
+            Status = "No session selected";
+            return;
+        }
+
+        SessionOptions options;
+        try
+        {
+            options = string.IsNullOrEmpty(session.OptionsJson)
+                ? new SessionOptions()
+                : JsonSerializer.Deserialize<SessionOptions>(session.OptionsJson) ?? new SessionOptions();
+        }
+        catch (JsonException ex)
+        {
+            Status = $"Invalid session options JSON: {ex.Message}. Using defaults.";
+            options = new SessionOptions();
+        }
+
+        var windowDays = options.WindowSizeDays > 0 ? options.WindowSizeDays : 14;
+        await RunMiningAsync(windowDays);
+    }
+
+    [RelayCommand]
+    private async Task MineLastDaysAsync(int days = 14)
+    {
+        await RunMiningAsync(days);
+    }
+
     [RelayCommand]
     private void Stop()
     {
@@ -157,12 +188,12 @@ public partial class MiningViewModel : ObservableObject
     [RelayCommand]
     private async Task MineLast7DaysAsync()
     {
-        await MineLastDaysAsync(7);
+        await RunMiningAsync(7);
     }
 
     [RelayCommand]
     private async Task MineLast30DaysAsync()
     {
-        await MineLastDaysAsync(30);
+        await RunMiningAsync(30);
     }
 }
