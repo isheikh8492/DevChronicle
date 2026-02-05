@@ -95,17 +95,22 @@
                         <TextBlock FontSize="16" FontWeight="Medium" Text="Processing Options" VerticalAlignment="Center"/>
                     </StackPanel>
 
-                    <ui:CardControl Margin="0,0,0,12">
-                        <StackPanel Margin="16">
+                    <Border Margin="0,0,0,12"
+                            Padding="10"
+                            CornerRadius="6"
+                            BorderThickness="1"
+                            BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                            Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
+                        <StackPanel>
                             <CheckBox Content="Include merge commits"
-                                      Margin="0,0,0,8"
+                                      Margin="0,0,0,6"
                                       FontSize="14"
                                       IsChecked="{Binding IncludeMerges, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                             <CheckBox Content="Include diffs in summarization"
                                       FontSize="14"
                                       IsChecked="{Binding IncludeDiffs, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                         </StackPanel>
-                    </ui:CardControl>
+                    </Border>
 
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -114,25 +119,35 @@
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
 
-                        <ui:CardControl Grid.Column="0">
-                            <StackPanel Margin="16">
-                                <TextBlock Text="Window size (days)" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,8"/>
+                        <Border Grid.Column="0"
+                                Padding="10"
+                                CornerRadius="6"
+                                BorderThickness="1"
+                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
+                            <StackPanel>
+                                <TextBlock Text="Window size (days)" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,6"/>
                                 <ui:NumberBox Value="{Binding WindowSizeDays, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                               Minimum="1"
                                               Maximum="90"
                                               SpinButtonPlacementMode="Inline"/>
                             </StackPanel>
-                        </ui:CardControl>
+                        </Border>
 
-                        <ui:CardControl Grid.Column="2">
-                            <StackPanel Margin="16">
-                                <TextBlock Text="Max bullets per day" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,8"/>
+                        <Border Grid.Column="2"
+                                Padding="10"
+                                CornerRadius="6"
+                                BorderThickness="1"
+                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
+                            <StackPanel>
+                                <TextBlock Text="Max bullets per day" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,6"/>
                                 <ui:NumberBox Value="{Binding MaxBulletsPerDay, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                               Minimum="4"
                                               Maximum="10"
                                               SpinButtonPlacementMode="Inline"/>
                             </StackPanel>
-                        </ui:CardControl>
+                        </Border>
                     </Grid>
 
                     <Grid Margin="0,16,0,0">
@@ -142,19 +157,29 @@
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
 
-                        <ui:CardControl Grid.Column="0">
-                            <StackPanel Margin="16">
-                                <TextBlock Text="Overlap days" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,8"/>
+                        <Border Grid.Column="0"
+                                Padding="10"
+                                CornerRadius="6"
+                                BorderThickness="1"
+                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
+                            <StackPanel>
+                                <TextBlock Text="Overlap days" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,6"/>
                                 <ui:NumberBox Value="{Binding OverlapDays, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                               Minimum="0"
                                               Maximum="14"
                                               SpinButtonPlacementMode="Inline"/>
                             </StackPanel>
-                        </ui:CardControl>
+                        </Border>
 
-                        <ui:CardControl Grid.Column="2">
-                            <StackPanel Margin="16">
-                                <TextBlock Text="Backfill order" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,8"/>
+                        <Border Grid.Column="2"
+                                Padding="10"
+                                CornerRadius="6"
+                                BorderThickness="1"
+                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
+                            <StackPanel>
+                                <TextBlock Text="Backfill order" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,6"/>
                                 <ComboBox SelectedValuePath="Tag"
                                           SelectedValue="{Binding BackfillOrder, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                                     <ComboBoxItem Content="Oldest first" Tag="OldestFirst"/>
@@ -162,28 +187,21 @@
                                     <ComboBoxItem Content="Fill gaps first" Tag="GappedFirst"/>
                                 </ComboBox>
                             </StackPanel>
-                        </ui:CardControl>
+                        </Border>
                     </Grid>
 
-                    <ui:CardControl Margin="0,12,0,0">
-                        <StackPanel Margin="16">
+                    <Border Margin="0,12,0,0"
+                            Padding="10"
+                            CornerRadius="6"
+                            BorderThickness="1"
+                            BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                            Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
+                        <StackPanel>
                             <CheckBox Content="Fill gaps first"
                                       FontSize="14"
                                       IsChecked="{Binding FillGapsFirst, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                         </StackPanel>
-                    </ui:CardControl>
-                </StackPanel>
-            </ui:Card>
-
-            <ui:Card>
-                <StackPanel Margin="20">
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                        <ui:SymbolIcon Symbol="Info24" FontSize="20" Margin="0,0,12,0"/>
-                        <TextBlock FontSize="16" FontWeight="Medium" Text="About" VerticalAlignment="Center"/>
-                    </StackPanel>
-                    <TextBlock FontSize="14" Text="DevChronicle" FontWeight="Medium" Margin="0,0,0,4"/>
-                    <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Version 1.0.0 (MVP)" Margin="0,0,0,4"/>
-                    <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Session-based developer diary and resume generator from Git history"/>
+                    </Border>
                 </StackPanel>
             </ui:Card>
         </StackPanel>
