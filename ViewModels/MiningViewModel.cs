@@ -102,7 +102,7 @@ public partial class MiningViewModel : ObservableObject
                 preferGaps: false);
 
             DaysMined = result.DaysMined;
-            CommitsFound = result.StoredCommits;
+            CommitsFound = result.TotalCommits;
 
             if (result.Success)
             {
@@ -215,7 +215,7 @@ public partial class MiningViewModel : ObservableObject
                 preferGaps);
 
             DaysMined = result.DaysMined;
-            CommitsFound = result.StoredCommits;
+            CommitsFound = result.TotalCommits;
 
             if (result.Success)
             {
@@ -305,7 +305,7 @@ public partial class MiningViewModel : ObservableObject
                 _cancellationTokenSource.Token);
 
             DaysMined = result.DaysMined;
-            CommitsFound = result.StoredCommits;
+            CommitsFound = result.TotalCommits;
 
             if (result.Success)
             {
@@ -457,7 +457,7 @@ public partial class MiningViewModel : ObservableObject
             }
 
             DaysMined = result.DaysMined;
-            CommitsFound = result.StoredCommits;
+            CommitsFound = result.TotalCommits;
 
             if (result.Success)
             {

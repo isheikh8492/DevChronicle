@@ -41,6 +41,15 @@ public partial class SessionDetailViewModel : ObservableObject
     [ObservableProperty]
     private bool hasSelectedDayEvidence;
 
+    [ObservableProperty]
+    private ObservableCollection<BranchEvidenceViewModel> selectedDayBranches = new();
+
+    [ObservableProperty]
+    private bool hasSelectedDayBranches;
+
+    [ObservableProperty]
+    private bool hasAnySelectedDayEvidence;
+
     /// <summary>
     /// Phase A: Mining ViewModel
     /// </summary>
@@ -232,6 +241,9 @@ public partial class SessionDetailViewModel : ObservableObject
             {
                 SelectedDayEvidence.Clear();
                 HasSelectedDayEvidence = false;
+                SelectedDayBranches.Clear();
+                HasSelectedDayBranches = false;
+                HasAnySelectedDayEvidence = false;
             });
             return;
         }
@@ -259,6 +271,28 @@ public partial class SessionDetailViewModel : ObservableObject
             evidence.Add(new CommitEvidenceViewModel(shortSha, commit.Subject, files));
         }
 
+        var branchRows = await _databaseService.GetCommitBranchRowsForDayAsync(session.Id, selectedDay.Date);
+        var branchGroups = branchRows
+            .GroupBy(row => string.IsNullOrWhiteSpace(row.BranchName) ? "(unattributed)" : row.BranchName!)
+            .OrderByDescending(group => group.Count())
+            .ThenBy(group => group.Key)
+            .ToList();
+
+        var branches = new List<BranchEvidenceViewModel>();
+        foreach (var group in branchGroups)
+        {
+            var commitsInBranch = group
+                .OrderBy(row => row.AuthorDate)
+                .Select(row =>
+                {
+                    var shortSha = row.Sha.Length > 7 ? row.Sha.Substring(0, 7) : row.Sha;
+                    return new BranchCommitViewModel(shortSha, row.Subject, row.AuthorDate);
+                })
+                .ToList();
+
+            branches.Add(new BranchEvidenceViewModel(group.Key, commitsInBranch));
+        }
+
         await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
         {
             SelectedDayEvidence.Clear();
@@ -266,6 +300,13 @@ public partial class SessionDetailViewModel : ObservableObject
                 SelectedDayEvidence.Add(item);
 
             HasSelectedDayEvidence = SelectedDayEvidence.Count > 0;
+
+            SelectedDayBranches.Clear();
+            foreach (var branch in branches)
+                SelectedDayBranches.Add(branch);
+
+            HasSelectedDayBranches = SelectedDayBranches.Count > 0;
+            HasAnySelectedDayEvidence = HasSelectedDayEvidence || HasSelectedDayBranches;
         });
     }
 }

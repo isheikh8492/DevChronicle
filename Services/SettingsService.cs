@@ -54,7 +54,9 @@ public class SettingsService
             MaxBulletsPerDay = await GetAsync(MaxBulletsPerDayKey, 6),
             BackfillOrder = await GetAsync(MiningBackfillOrderKey, "OldestFirst"),
             OverlapDays = await GetAsync(MiningOverlapDaysKey, 1),
-            FillGapsFirst = await GetAsync(MiningFillGapsFirstKey, false)
+            FillGapsFirst = await GetAsync(MiningFillGapsFirstKey, false),
+            RefScope = RefScope.LocalBranchesOnly,
+            TrackIntegrations = true
         };
 
         return options;

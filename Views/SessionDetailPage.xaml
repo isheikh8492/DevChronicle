@@ -396,6 +396,53 @@
                                                   HorizontalScrollBarVisibility="Disabled"
                                                   MaxHeight="{Binding ActualHeight, ElementName=TabsContainerGrid, FallbackValue=400}">
                                         <StackPanel Margin="8,12,8,12">
+                                            <ItemsControl ItemsSource="{Binding SelectedDayBranches}">
+                                                <ItemsControl.Style>
+                                                    <Style TargetType="ItemsControl">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding HasSelectedDayBranches}" Value="False">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </ItemsControl.Style>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                                                BorderThickness="1"
+                                                                CornerRadius="8"
+                                                                Padding="10"
+                                                                Margin="0,0,0,12">
+                                                            <StackPanel>
+                                                                <TextBlock FontWeight="SemiBold">
+                                                                    <Run Text="Branch: "/>
+                                                                    <Run Text="{Binding BranchName}"/>
+                                                                    <Run Text=" ("/>
+                                                                    <Run Text="{Binding CommitCount}"/>
+                                                                    <Run Text=" commits)"/>
+                                                                </TextBlock>
+                                                                <ItemsControl ItemsSource="{Binding Commits}">
+                                                                    <ItemsControl.ItemTemplate>
+                                                                        <DataTemplate>
+                                                                            <TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                                                       Margin="12,4,0,0"
+                                                                                       TextWrapping="Wrap"
+                                                                                       Width="{Binding RelativeSource={RelativeSource AncestorType=ScrollViewer}, Path=ViewportWidth}">
+                                                                                <Run Text="["/>
+                                                                                <Run Text="{Binding Sha}"/>
+                                                                                <Run Text="] "/>
+                                                                                <Run Text="{Binding Subject}"/>
+                                                                            </TextBlock>
+                                                                        </DataTemplate>
+                                                                    </ItemsControl.ItemTemplate>
+                                                                </ItemsControl>
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+
                                             <ItemsControl ItemsSource="{Binding SelectedDayEvidence}">
                                                 <ItemsControl.Style>
                                                     <Style TargetType="ItemsControl">
@@ -451,7 +498,7 @@
                                                     <Style TargetType="TextBlock">
                                                         <Setter Property="Visibility" Value="Collapsed"/>
                                                         <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding HasSelectedDayEvidence}" Value="False">
+                                                            <DataTrigger Binding="{Binding HasAnySelectedDayEvidence}" Value="False">
                                                                 <Setter Property="Visibility" Value="Visible"/>
                                                             </DataTrigger>
                                                         </Style.Triggers>

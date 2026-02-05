@@ -75,20 +75,34 @@ public class DatabaseService
                 author_date TEXT NOT NULL,
                 author_name TEXT NOT NULL,
                 author_email TEXT NOT NULL,
+                committer_date TEXT,
+                committer_name TEXT,
+                committer_email TEXT,
                 subject TEXT NOT NULL,
                 additions INTEGER NOT NULL DEFAULT 0,
                 deletions INTEGER NOT NULL DEFAULT 0,
                 files_json TEXT NOT NULL DEFAULT '[]',
                 is_merge INTEGER NOT NULL DEFAULT 0,
                 reachable_from_main INTEGER,
+                patch_id TEXT,
                 PRIMARY KEY (session_id, sha),
                 FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
             )");
+
+        EnsureColumnExists(connection, "commits", "committer_date", "TEXT");
+        EnsureColumnExists(connection, "commits", "committer_name", "TEXT");
+        EnsureColumnExists(connection, "commits", "committer_email", "TEXT");
+        EnsureColumnExists(connection, "commits", "patch_id", "TEXT");
 
         // Create index on author_date for faster queries
         connection.Execute(@"
             CREATE INDEX IF NOT EXISTS idx_commits_date
             ON commits(session_id, author_date)");
+
+        // Create index on author_email for faster queries
+        connection.Execute(@"
+            CREATE INDEX IF NOT EXISTS idx_commits_author_email_date
+            ON commits(session_id, author_email, author_date)");
 
         // Create days table
         connection.Execute(@"
@@ -102,6 +116,14 @@ public class DatabaseService
                 PRIMARY KEY (session_id, day),
                 FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
             )");
+
+        connection.Execute(@"
+            CREATE INDEX IF NOT EXISTS idx_days_day
+            ON days(session_id, day)");
+
+        connection.Execute(@"
+            CREATE INDEX IF NOT EXISTS idx_days_status_day
+            ON days(session_id, status, day)");
 
         // Create day_summaries table
         connection.Execute(@"
@@ -131,6 +153,82 @@ public class DatabaseService
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
             )");
+
+        // Create commit parents table
+        connection.Execute(@"
+            CREATE TABLE IF NOT EXISTS commit_parents (
+                session_id INTEGER NOT NULL,
+                child_sha TEXT NOT NULL,
+                parent_sha TEXT NOT NULL,
+                parent_order INTEGER NOT NULL,
+                PRIMARY KEY (session_id, child_sha, parent_order),
+                FOREIGN KEY (session_id, child_sha) REFERENCES commits(session_id, sha) ON DELETE CASCADE
+            )");
+
+        connection.Execute(@"
+            CREATE INDEX IF NOT EXISTS idx_commit_parents_parent
+            ON commit_parents(session_id, parent_sha)");
+
+        // Create commit branch labels table
+        connection.Execute(@"
+            CREATE TABLE IF NOT EXISTS commit_branch_labels (
+                session_id INTEGER NOT NULL,
+                sha TEXT NOT NULL,
+                branch_name TEXT NOT NULL,
+                is_primary INTEGER NOT NULL DEFAULT 0,
+                label_method TEXT NOT NULL,
+                captured_at TEXT NOT NULL,
+                PRIMARY KEY (session_id, sha, branch_name),
+                FOREIGN KEY (session_id, sha) REFERENCES commits(session_id, sha) ON DELETE CASCADE
+            )");
+
+        connection.Execute(@"
+            CREATE INDEX IF NOT EXISTS idx_commit_branch_labels_branch
+            ON commit_branch_labels(session_id, branch_name)");
+
+        // Create integration events table
+        connection.Execute(@"
+            CREATE TABLE IF NOT EXISTS integration_events (
+                id TEXT PRIMARY KEY,
+                session_id INTEGER NOT NULL,
+                anchor_sha TEXT,
+                occurred_at TEXT NOT NULL,
+                method TEXT NOT NULL,
+                confidence TEXT NOT NULL,
+                details_json TEXT NOT NULL,
+                FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+            )");
+
+        // Create integration event commits table
+        connection.Execute(@"
+            CREATE TABLE IF NOT EXISTS integration_event_commits (
+                integration_event_id TEXT NOT NULL,
+                session_id INTEGER NOT NULL,
+                sha TEXT NOT NULL,
+                PRIMARY KEY (integration_event_id, sha),
+                FOREIGN KEY (integration_event_id) REFERENCES integration_events(id) ON DELETE CASCADE
+            )");
+
+        connection.Execute(@"
+            CREATE INDEX IF NOT EXISTS idx_integration_event_commits_sha
+            ON integration_event_commits(session_id, sha)");
+
+        // Create branch snapshots table
+        connection.Execute(@"
+            CREATE TABLE IF NOT EXISTS branch_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id INTEGER NOT NULL,
+                captured_at TEXT NOT NULL,
+                ref_name TEXT NOT NULL,
+                head_sha TEXT NOT NULL,
+                head_date TEXT,
+                is_remote INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+            )");
+
+        connection.Execute(@"
+            CREATE INDEX IF NOT EXISTS idx_branch_snapshots_session_captured
+            ON branch_snapshots(session_id, captured_at)");
     }
 
     // Session operations
@@ -230,8 +328,8 @@ public class DatabaseService
         await connection.OpenAsync();
         var sql = @"
             INSERT OR IGNORE INTO commits
-            (session_id, sha, author_date, author_name, author_email, subject, additions, deletions, files_json, is_merge, reachable_from_main)
-            VALUES (@SessionId, @Sha, @AuthorDate, @AuthorName, @AuthorEmail, @Subject, @Additions, @Deletions, @FilesJson, @IsMerge, @ReachableFromMain)";
+            (session_id, sha, author_date, author_name, author_email, committer_date, committer_name, committer_email, subject, additions, deletions, files_json, is_merge, reachable_from_main, patch_id)
+            VALUES (@SessionId, @Sha, @AuthorDate, @AuthorName, @AuthorEmail, @CommitterDate, @CommitterName, @CommitterEmail, @Subject, @Additions, @Deletions, @FilesJson, @IsMerge, @ReachableFromMain, @PatchId)";
 
         return await connection.ExecuteAsync(sql, commit);
     }
@@ -249,8 +347,8 @@ public class DatabaseService
         {
             var sql = @"
                 INSERT OR IGNORE INTO commits
-                (session_id, sha, author_date, author_name, author_email, subject, additions, deletions, files_json, is_merge, reachable_from_main)
-                VALUES (@SessionId, @Sha, @AuthorDate, @AuthorName, @AuthorEmail, @Subject, @Additions, @Deletions, @FilesJson, @IsMerge, @ReachableFromMain)";
+                (session_id, sha, author_date, author_name, author_email, committer_date, committer_name, committer_email, subject, additions, deletions, files_json, is_merge, reachable_from_main, patch_id)
+                VALUES (@SessionId, @Sha, @AuthorDate, @AuthorName, @AuthorEmail, @CommitterDate, @CommitterName, @CommitterEmail, @Subject, @Additions, @Deletions, @FilesJson, @IsMerge, @ReachableFromMain, @PatchId)";
 
             var rowsAffected = await connection.ExecuteAsync(sql, commits, transaction);
             transaction.Commit();
@@ -261,6 +359,165 @@ public class DatabaseService
             transaction.Rollback();
             throw;
         }
+    }
+
+    public async Task<int> BatchInsertCommitParentsAsync(List<CommitParent> parents)
+    {
+        if (parents == null || parents.Count == 0)
+            return 0;
+
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+
+        using var transaction = connection.BeginTransaction();
+        try
+        {
+            var sql = @"
+                INSERT OR IGNORE INTO commit_parents
+                (session_id, child_sha, parent_sha, parent_order)
+                VALUES (@SessionId, @ChildSha, @ParentSha, @ParentOrder)";
+
+            var rows = await connection.ExecuteAsync(sql, parents, transaction);
+            transaction.Commit();
+            return rows;
+        }
+        catch
+        {
+            transaction.Rollback();
+            throw;
+        }
+    }
+
+    public async Task<int> BatchInsertCommitBranchLabelsAsync(List<CommitBranchLabel> labels)
+    {
+        if (labels == null || labels.Count == 0)
+            return 0;
+
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+
+        using var transaction = connection.BeginTransaction();
+        try
+        {
+            var sql = @"
+                INSERT OR REPLACE INTO commit_branch_labels
+                (session_id, sha, branch_name, is_primary, label_method, captured_at)
+                VALUES (@SessionId, @Sha, @BranchName, @IsPrimary, @LabelMethod, @CapturedAt)";
+
+            var rows = await connection.ExecuteAsync(sql, labels, transaction);
+            transaction.Commit();
+            return rows;
+        }
+        catch
+        {
+            transaction.Rollback();
+            throw;
+        }
+    }
+
+    public async Task<int> BatchInsertBranchSnapshotsAsync(List<BranchSnapshot> snapshots)
+    {
+        if (snapshots == null || snapshots.Count == 0)
+            return 0;
+
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+
+        using var transaction = connection.BeginTransaction();
+        try
+        {
+            var sql = @"
+                INSERT INTO branch_snapshots
+                (session_id, captured_at, ref_name, head_sha, head_date, is_remote)
+                VALUES (@SessionId, @CapturedAt, @RefName, @HeadSha, @HeadDate, @IsRemote)";
+
+            var rows = await connection.ExecuteAsync(sql, snapshots, transaction);
+            transaction.Commit();
+            return rows;
+        }
+        catch
+        {
+            transaction.Rollback();
+            throw;
+        }
+    }
+
+    public async Task<int> BatchInsertIntegrationEventsAsync(List<IntegrationEvent> events)
+    {
+        if (events == null || events.Count == 0)
+            return 0;
+
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+
+        using var transaction = connection.BeginTransaction();
+        try
+        {
+            var sql = @"
+                INSERT OR REPLACE INTO integration_events
+                (id, session_id, anchor_sha, occurred_at, method, confidence, details_json)
+                VALUES (@Id, @SessionId, @AnchorSha, @OccurredAt, @Method, @Confidence, @DetailsJson)";
+
+            var rows = await connection.ExecuteAsync(sql, events, transaction);
+            transaction.Commit();
+            return rows;
+        }
+        catch
+        {
+            transaction.Rollback();
+            throw;
+        }
+    }
+
+    public async Task<int> BatchInsertIntegrationEventCommitsAsync(List<IntegrationEventCommit> rows)
+    {
+        if (rows == null || rows.Count == 0)
+            return 0;
+
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+
+        using var transaction = connection.BeginTransaction();
+        try
+        {
+            var sql = @"
+                INSERT OR IGNORE INTO integration_event_commits
+                (integration_event_id, session_id, sha)
+                VALUES (@IntegrationEventId, @SessionId, @Sha)";
+
+            var affected = await connection.ExecuteAsync(sql, rows, transaction);
+            transaction.Commit();
+            return affected;
+        }
+        catch
+        {
+            transaction.Rollback();
+            throw;
+        }
+    }
+
+    public async Task<List<CommitBranchRow>> GetCommitBranchRowsForDayAsync(int sessionId, DateTime day)
+    {
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+        var dayStart = day.Date.ToString("yyyy-MM-dd");
+        var sql = @"
+            SELECT
+                c.sha AS Sha,
+                c.subject AS Subject,
+                c.author_date AS AuthorDate,
+                lbl.branch_name AS BranchName
+            FROM commits c
+            LEFT JOIN commit_branch_labels lbl
+              ON lbl.session_id = c.session_id
+             AND lbl.sha = c.sha
+             AND lbl.is_primary = 1
+            WHERE c.session_id = @SessionId
+              AND DATE(c.author_date) = @Day
+            ORDER BY c.author_date";
+
+        var rows = await connection.QueryAsync<CommitBranchRow>(sql, new { SessionId = sessionId, Day = dayStart });
+        return rows.ToList();
     }
 
     public async Task<IEnumerable<Commit>> GetCommitsForDayAsync(int sessionId, DateTime day)
@@ -275,16 +532,156 @@ public class DatabaseService
                 author_date AS AuthorDate,
                 author_name AS AuthorName,
                 author_email AS AuthorEmail,
+                committer_date AS CommitterDate,
+                committer_name AS CommitterName,
+                committer_email AS CommitterEmail,
                 subject AS Subject,
                 additions AS Additions,
                 deletions AS Deletions,
                 files_json AS FilesJson,
                 is_merge AS IsMerge,
-                reachable_from_main AS ReachableFromMain
+                reachable_from_main AS ReachableFromMain,
+                patch_id AS PatchId
             FROM commits
             WHERE session_id = @SessionId AND DATE(author_date) = @Day
             ORDER BY author_date";
         return await connection.QueryAsync<Commit>(sql, new { SessionId = sessionId, Day = dayStart });
+    }
+
+    public async Task<HashSet<string>> GetCommitShasInRangeAsync(int sessionId, DateTime? start, DateTime? end)
+    {
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+
+        if (start.HasValue && end.HasValue)
+        {
+            var sql = @"
+                SELECT sha
+                FROM commits
+                WHERE session_id = @SessionId
+                  AND DATE(author_date) BETWEEN @Start AND @End";
+            var rows = await connection.QueryAsync<string>(sql, new
+            {
+                SessionId = sessionId,
+                Start = start.Value.Date.ToString("yyyy-MM-dd"),
+                End = end.Value.Date.ToString("yyyy-MM-dd")
+            });
+            return rows.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var allRows = await connection.QueryAsync<string>(
+            "SELECT sha FROM commits WHERE session_id = @SessionId",
+            new { SessionId = sessionId });
+        return allRows.ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    public async Task<List<Commit>> GetCommitsByShasAsync(int sessionId, IEnumerable<string> shas)
+    {
+        var shaList = shas.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (shaList.Count == 0)
+            return new List<Commit>();
+
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+
+        var sql = @"
+            SELECT
+                session_id AS SessionId,
+                sha AS Sha,
+                author_date AS AuthorDate,
+                author_name AS AuthorName,
+                author_email AS AuthorEmail,
+                committer_date AS CommitterDate,
+                committer_name AS CommitterName,
+                committer_email AS CommitterEmail,
+                subject AS Subject,
+                additions AS Additions,
+                deletions AS Deletions,
+                files_json AS FilesJson,
+                is_merge AS IsMerge,
+                reachable_from_main AS ReachableFromMain,
+                patch_id AS PatchId
+            FROM commits
+            WHERE session_id = @SessionId
+              AND sha IN @Shas";
+
+        var rows = await connection.QueryAsync<Commit>(sql, new { SessionId = sessionId, Shas = shaList });
+        return rows.ToList();
+    }
+
+    public async Task<List<(string PatchId, List<string> Shas)>> GetPatchIdGroupsAsync(int sessionId)
+    {
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+
+        var sql = @"
+            SELECT patch_id AS PatchId,
+                   GROUP_CONCAT(sha, '|') AS ShaList
+            FROM commits
+            WHERE session_id = @SessionId
+              AND patch_id IS NOT NULL
+              AND patch_id <> ''
+            GROUP BY patch_id
+            HAVING COUNT(*) > 1";
+
+        var rows = await connection.QueryAsync(sql, new { SessionId = sessionId });
+        var results = new List<(string PatchId, List<string> Shas)>();
+        foreach (var row in rows)
+        {
+            var patchId = (string)row.PatchId;
+            var shaList = ((string)row.ShaList)
+                .Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList();
+            results.Add((patchId, shaList));
+        }
+
+        return results;
+    }
+
+    public async Task<int> UpdateCommitPatchIdsAsync(int sessionId, List<(string Sha, string PatchId)> updates)
+    {
+        if (updates.Count == 0)
+            return 0;
+
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+        using var transaction = connection.BeginTransaction();
+        try
+        {
+            var sql = @"
+                UPDATE commits
+                SET patch_id = @PatchId
+                WHERE session_id = @SessionId AND sha = @Sha";
+
+            var rows = await connection.ExecuteAsync(sql, updates.Select(u => new
+            {
+                SessionId = sessionId,
+                Sha = u.Sha,
+                PatchId = u.PatchId
+            }), transaction);
+            transaction.Commit();
+            return rows;
+        }
+        catch
+        {
+            transaction.Rollback();
+            throw;
+        }
+    }
+
+    private static void EnsureColumnExists(SqliteConnection connection, string table, string column, string type)
+    {
+        var rows = connection.Query($"PRAGMA table_info({table})");
+        var exists = rows.Any(row =>
+        {
+            var name = (string)row.name;
+            return string.Equals(name, column, StringComparison.OrdinalIgnoreCase);
+        });
+
+        if (!exists)
+        {
+            connection.Execute($"ALTER TABLE {table} ADD COLUMN {column} {type}");
+        }
     }
 
     public async Task<int> DeleteCommitsAsync(int sessionId, DateTime? start, DateTime? end)

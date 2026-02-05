@@ -7,12 +7,16 @@ public class Commit
     public DateTime AuthorDate { get; set; }
     public string AuthorName { get; set; } = string.Empty;
     public string AuthorEmail { get; set; } = string.Empty;
+    public DateTime CommitterDate { get; set; }
+    public string CommitterName { get; set; } = string.Empty;
+    public string CommitterEmail { get; set; } = string.Empty;
     public string Subject { get; set; } = string.Empty;
     public int Additions { get; set; }
     public int Deletions { get; set; }
     public string FilesJson { get; set; } = "[]";
     public bool IsMerge { get; set; }
     public bool? ReachableFromMain { get; set; }
+    public string? PatchId { get; set; }
 }
 
 public class CommitFile

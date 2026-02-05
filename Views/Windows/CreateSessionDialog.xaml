@@ -119,6 +119,19 @@
                                IsEnabled="False"/>
             </Grid>
 
+            <!-- Ref Scope -->
+            <TextBlock
+                Text="Ref Scope"
+                FontWeight="Medium"
+                Margin="0,0,0,8"/>
+            <ComboBox x:Name="RefScopeComboBox"
+                      SelectedIndex="0"
+                      Margin="0,0,0,16">
+                <ComboBoxItem Content="Local branches only" IsSelected="True"/>
+                <ComboBoxItem Content="Local + remotes (disabled)" IsEnabled="False"/>
+                <ComboBoxItem Content="All refs (disabled)" IsEnabled="False"/>
+            </ComboBox>
+
             <!-- Include Merges -->
             <CheckBox
                 x:Name="IncludeMergesCheckBox"

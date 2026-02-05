@@ -23,6 +23,15 @@ public class SessionOptions
     public string BackfillOrder { get; set; } = "OldestFirst";
     public int OverlapDays { get; set; } = 1;
     public bool FillGapsFirst { get; set; }
+    public RefScope RefScope { get; set; } = RefScope.LocalBranchesOnly;
+    public bool TrackIntegrations { get; set; } = true;
+}
+
+public enum RefScope
+{
+    LocalBranchesOnly = 0,
+    LocalPlusRemotes = 1,
+    AllRefs = 2
 }
 
 public class AuthorFilter

@@ -128,6 +128,18 @@ public partial class CreateSessionDialog : FluentWindow
 
         var options = await _settingsService.GetDefaultSessionOptionsAsync();
         options.IncludeMerges = IncludeMergesCheckBox != null && IncludeMergesCheckBox.IsChecked == true;
+        options.RefScope = RefScope.LocalBranchesOnly;
+        options.TrackIntegrations = true;
+
+        if (RefScopeComboBox != null)
+        {
+            options.RefScope = RefScopeComboBox.SelectedIndex switch
+            {
+                1 => RefScope.LocalPlusRemotes,
+                2 => RefScope.AllRefs,
+                _ => RefScope.LocalBranchesOnly
+            };
+        }
 
         // Create the session object
         Result = new Session

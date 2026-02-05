@@ -30,10 +30,14 @@ public class MiningService
         var rangeLabel = since.HasValue && until.HasValue
             ? $"{since.Value:yyyy-MM-dd} to {until.Value:yyyy-MM-dd}"
             : "ALL HISTORY";
-        _logger.LogInfo($"Mining started for session {sessionId}, repo: {repoPath}, range: {rangeLabel}");
+        _logger.LogInfo($"Mining started for session {sessionId}, repo: {repoPath}, range: {rangeLabel}, scope: {options.RefScope}, includeMerges: {options.IncludeMerges}, trackIntegrations: {options.TrackIntegrations}");
 
         try
         {
+            var normalizedStart = since?.Date;
+            var normalizedEnd = until?.Date;
+            var endExclusive = normalizedEnd?.AddDays(1);
+
             // Step 1: Fetch from remote
             _logger.LogInfo("Step 1: Fetching from remote...");
             progress?.Report(new MiningProgress { Status = "Fetching from remote..." });
@@ -46,16 +50,60 @@ public class MiningService
             }
             _logger.LogInfo("Git fetch completed successfully");
 
-            // Step 2: Get commits from git
-            _logger.LogInfo("Step 2: Reading commits from Git...");
+            // Step 2: Get commits from git (single-pass numstat)
+            _logger.LogInfo("Step 2: Reading commits from Git (single-pass)...");
             progress?.Report(new MiningProgress { Status = "Reading commits from Git..." });
-            var commits = await _gitService.GetCommitsAsync(
+            var includeMergesForMining = options.IncludeMerges || options.TrackIntegrations;
+            var knownShas = await _databaseService.GetCommitShasInRangeAsync(sessionId, normalizedStart, normalizedEnd);
+            var parsedCommits = await _gitService.GetCommitsWithNumstatAsync(
                 repoPath,
                 sessionId,
-                since,
-                until,
+                normalizedStart,
+                endExclusive,
                 authorFilters,
-                options.IncludeMerges);
+                options.RefScope,
+                includeMergesForMining,
+                knownShas);
+
+            var parsedBySha = parsedCommits.ToDictionary(p => p.Commit.Sha, StringComparer.OrdinalIgnoreCase);
+            var reflogShas = await _gitService.GetReflogCommitsAsync(repoPath, normalizedStart, endExclusive);
+            var missingReflogShas = reflogShas
+                .Where(sha => !parsedBySha.ContainsKey(sha))
+                .ToList();
+
+            if (missingReflogShas.Count > 0)
+            {
+                _logger.LogInfo($"Reflog commits not in log output: {missingReflogShas.Count}");
+                var reflogCommits = await _gitService.GetCommitsByShasWithNumstatAsync(repoPath, sessionId, missingReflogShas);
+                foreach (var parsed in reflogCommits)
+                {
+                    parsedCommits.Add(parsed);
+                    parsedBySha[parsed.Commit.Sha] = parsed;
+                }
+            }
+
+            var commits = parsedCommits.Select(p => p.Commit).ToList();
+            var existingCommits = await _databaseService.GetCommitsByShasAsync(sessionId, knownShas);
+            var existingBySha = existingCommits.ToDictionary(c => c.Sha, StringComparer.OrdinalIgnoreCase);
+            for (var i = 0; i < commits.Count; i++)
+            {
+                var commit = commits[i];
+                if (existingBySha.TryGetValue(commit.Sha, out var existing))
+                {
+                    commits[i] = existing;
+                    parsedCommits[i].Commit = existing;
+                }
+            }
+            var parentRows = parsedCommits
+                .Where(p => p.Parents.Count > 0)
+                .SelectMany(p => p.Parents.Select((parent, index) => new CommitParent
+                {
+                    SessionId = sessionId,
+                    ChildSha = p.Commit.Sha,
+                    ParentSha = parent,
+                    ParentOrder = index
+                }))
+                .ToList();
 
             result.TotalCommits = commits.Count;
             _logger.LogInfo($"Found {commits.Count} commits");
@@ -74,9 +122,188 @@ public class MiningService
 
             // Batch insert all commits in ONE transaction
             _logger.LogInfo($"Batch inserting {commits.Count} commits...");
-            await _databaseService.BatchInsertCommitsAsync(commits);
-            result.StoredCommits = commits.Count;
-            _logger.LogInfo($"Successfully stored {commits.Count} commits");
+            var storedCommits = await _databaseService.BatchInsertCommitsAsync(commits);
+            result.StoredCommits = storedCommits;
+            _logger.LogInfo($"Stored {storedCommits} new commits (parsed {commits.Count})");
+
+            if (parentRows.Count > 0)
+            {
+                _logger.LogInfo($"Batch inserting {parentRows.Count} commit parents...");
+                await _databaseService.BatchInsertCommitParentsAsync(parentRows);
+            }
+
+            // Branch snapshots + labels
+            var capturedAt = DateTime.UtcNow;
+            var snapshots = await _gitService.GetBranchTipsAsync(repoPath, sessionId, capturedAt);
+            if (snapshots.Count > 0)
+            {
+                _logger.LogInfo($"Captured {snapshots.Count} branch tips");
+                await _databaseService.BatchInsertBranchSnapshotsAsync(snapshots);
+            }
+
+            var labelsBySha = await _gitService.GetNameRevLabelsAsync(repoPath, commits.Select(c => c.Sha));
+            var containsBySha = await _gitService.GetBranchContainmentAsync(repoPath, commits.Select(c => c.Sha));
+            var labels = new List<CommitBranchLabel>();
+            foreach (var commit in commits)
+            {
+                var labelSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                if (labelsBySha.TryGetValue(commit.Sha, out var primaryLabel) && !string.IsNullOrWhiteSpace(primaryLabel))
+                {
+                    labels.Add(new CommitBranchLabel
+                    {
+                        SessionId = sessionId,
+                        Sha = commit.Sha,
+                        BranchName = primaryLabel!,
+                        IsPrimary = true,
+                        LabelMethod = "name-rev",
+                        CapturedAt = capturedAt
+                    });
+                    labelSet.Add(primaryLabel!);
+                }
+
+                if (containsBySha.TryGetValue(commit.Sha, out var branches))
+                {
+                    foreach (var branch in branches)
+                    {
+                        if (!labelSet.Add(branch))
+                            continue;
+
+                        labels.Add(new CommitBranchLabel
+                        {
+                            SessionId = sessionId,
+                            Sha = commit.Sha,
+                            BranchName = branch,
+                            IsPrimary = false,
+                            LabelMethod = "branch-contains",
+                            CapturedAt = capturedAt
+                        });
+                    }
+                }
+
+                if (labelSet.Count == 0)
+                {
+                    labels.Add(new CommitBranchLabel
+                    {
+                        SessionId = sessionId,
+                        Sha = commit.Sha,
+                        BranchName = "(unattributed)",
+                        IsPrimary = true,
+                        LabelMethod = "none",
+                        CapturedAt = capturedAt
+                    });
+                }
+            }
+
+            if (labels.Count > 0)
+            {
+                _logger.LogInfo($"Persisting {labels.Count} commit branch labels");
+                await _databaseService.BatchInsertCommitBranchLabelsAsync(labels);
+            }
+
+            if (options.TrackIntegrations)
+            {
+                var mergeCommits = parsedCommits
+                    .Where(p => p.Parents.Count >= 2)
+                    .ToList();
+
+                _logger.LogInfo($"Integration tracking enabled. Merge commits in scope: {mergeCommits.Count}");
+                var integrationEvents = new List<IntegrationEvent>();
+                var integrationEventCommits = new List<IntegrationEventCommit>();
+
+                foreach (var merge in mergeCommits)
+                {
+                    var parent1 = merge.Parents[0];
+                    var parent2 = merge.Parents[1];
+                    var integratedShas = await _gitService.GetIntegratedCommitsAsync(repoPath, parent1, parent2);
+
+                    var evt = new IntegrationEvent
+                    {
+                        SessionId = sessionId,
+                        AnchorSha = merge.Commit.Sha,
+                        OccurredAt = merge.Commit.AuthorDate,
+                        Method = "MergeCommit",
+                        Confidence = "High",
+                        DetailsJson = JsonSerializer.Serialize(new
+                        {
+                            parent1,
+                            parent2,
+                            integratedCount = integratedShas.Count
+                        })
+                    };
+
+                    integrationEvents.Add(evt);
+                    foreach (var sha in integratedShas)
+                    {
+                        integrationEventCommits.Add(new IntegrationEventCommit
+                        {
+                            IntegrationEventId = evt.Id,
+                            SessionId = sessionId,
+                            Sha = sha
+                        });
+                    }
+                }
+
+                if (integrationEvents.Count > 0)
+                {
+                    await _databaseService.BatchInsertIntegrationEventsAsync(integrationEvents);
+                }
+
+                if (integrationEventCommits.Count > 0)
+                {
+                    await _databaseService.BatchInsertIntegrationEventCommitsAsync(integrationEventCommits);
+                }
+            }
+
+            var patchUpdates = new List<(string Sha, string PatchId)>();
+            var missingPatchId = commits.Where(c => string.IsNullOrWhiteSpace(c.PatchId)).ToList();
+            foreach (var commit in missingPatchId)
+            {
+                var patchId = await _gitService.GetPatchIdAsync(repoPath, commit.Sha);
+                if (!string.IsNullOrWhiteSpace(patchId))
+                {
+                    commit.PatchId = patchId;
+                    patchUpdates.Add((commit.Sha, patchId));
+                }
+            }
+
+            if (patchUpdates.Count > 0)
+            {
+                await _databaseService.UpdateCommitPatchIdsAsync(sessionId, patchUpdates);
+            }
+
+            var patchGroups = await _databaseService.GetPatchIdGroupsAsync(sessionId);
+            if (patchGroups.Count > 0)
+            {
+                var patchEvents = new List<IntegrationEvent>();
+                var patchEventCommits = new List<IntegrationEventCommit>();
+                foreach (var (patchId, shas) in patchGroups)
+                {
+                    var id = $"patch:{patchId}";
+                    var evt = new IntegrationEvent
+                    {
+                        Id = id,
+                        SessionId = sessionId,
+                        AnchorSha = shas.LastOrDefault(),
+                        OccurredAt = DateTime.UtcNow,
+                        Method = "PatchMatch",
+                        Confidence = "Medium",
+                        DetailsJson = JsonSerializer.Serialize(new { patchId, count = shas.Count })
+                    };
+                    patchEvents.Add(evt);
+                    foreach (var sha in shas)
+                    {
+                        patchEventCommits.Add(new IntegrationEventCommit
+                        {
+                            IntegrationEventId = id,
+                            SessionId = sessionId,
+                            Sha = sha
+                        });
+                    }
+                }
+
+                await _databaseService.BatchInsertIntegrationEventsAsync(patchEvents);
+                await _databaseService.BatchInsertIntegrationEventCommitsAsync(patchEventCommits);
+            }
 
             progress?.Report(new MiningProgress
             {
@@ -86,7 +313,11 @@ public class MiningService
             // Step 4: Aggregate by day
             _logger.LogInfo("Step 4: Aggregating commits by day...");
             progress?.Report(new MiningProgress { Status = "Aggregating commits by day..." });
-            var dayGroups = commits
+            var aggregationCommits = options.IncludeMerges
+                ? commits
+                : commits.Where(c => !c.IsMerge).ToList();
+
+            var dayGroups = aggregationCommits
                 .GroupBy(c => c.AuthorDate.Date)
                 .OrderBy(g => g.Key);
 

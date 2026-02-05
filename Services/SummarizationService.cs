@@ -46,8 +46,12 @@ public class SummarizationService
 
         try
         {
-            // Get commits for the day
             var commits = (await _databaseService.GetCommitsForDayAsync(sessionId, day)).ToList();
+
+            var options = await GetSessionOptionsAsync(sessionId);
+            if (!options.IncludeMerges)
+                commits = commits.Where(c => !c.IsMerge).ToList();
+
             if (commits.Count == 0)
             {
                 result.ErrorMessage = "No commits found for this day";
@@ -234,6 +238,32 @@ public class SummarizationService
     {
         var prompt = await _settingsService.GetAsync(SettingsService.SummarizationMasterPromptKey, DefaultMasterPrompt);
         return string.IsNullOrWhiteSpace(prompt) ? DefaultMasterPrompt : prompt;
+    }
+
+    private async Task<SessionOptions> GetSessionOptionsAsync(int sessionId)
+    {
+        try
+        {
+            var defaults = await _settingsService.GetDefaultSessionOptionsAsync();
+            var session = await _databaseService.GetSessionAsync(sessionId);
+            if (session == null || string.IsNullOrWhiteSpace(session.OptionsJson))
+                return defaults;
+
+            var options = JsonSerializer.Deserialize<SessionOptions>(session.OptionsJson) ?? new SessionOptions();
+            options.IncludeMerges = options.IncludeMerges;
+            options.IncludeDiffs = options.IncludeDiffs;
+            options.WindowSizeDays = options.WindowSizeDays > 0 ? options.WindowSizeDays : defaults.WindowSizeDays;
+            options.MaxBulletsPerDay = options.MaxBulletsPerDay > 0 ? options.MaxBulletsPerDay : defaults.MaxBulletsPerDay;
+            options.BackfillOrder = string.IsNullOrWhiteSpace(options.BackfillOrder) ? defaults.BackfillOrder : options.BackfillOrder;
+            options.OverlapDays = options.OverlapDays > 0 ? options.OverlapDays : defaults.OverlapDays;
+            options.RefScope = options.RefScope;
+            options.TrackIntegrations = options.TrackIntegrations;
+            return options;
+        }
+        catch
+        {
+            return new SessionOptions();
+        }
     }
 
     private string ComputeInputHash(List<Commit> commits, DateTime day)
