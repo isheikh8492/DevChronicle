@@ -1,9 +1,9 @@
 using System;
 using System.Text.Json;
+using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DevChronicle.Models;
-using DevChronicle.Services;
 using DevChronicle.Services;
 
 namespace DevChronicle.ViewModels;
@@ -14,6 +14,7 @@ public partial class MiningViewModel : ObservableObject
     private readonly DatabaseService _databaseService;
     private readonly SettingsService _settingsService;
     private readonly SessionContextService _sessionContext;
+    private readonly LoggerService _logger;
     private CancellationTokenSource? _cancellationTokenSource;
 
     [ObservableProperty]
@@ -50,12 +51,14 @@ public partial class MiningViewModel : ObservableObject
         MiningService miningService,
         DatabaseService databaseService,
         SettingsService settingsService,
-        SessionContextService sessionContext)
+        SessionContextService sessionContext,
+        LoggerService logger)
     {
         _miningService = miningService;
         _databaseService = databaseService;
         _settingsService = settingsService;
         _sessionContext = sessionContext;
+        _logger = logger;
     }
 
     private async Task RunMiningAsync(int days)
@@ -150,8 +153,6 @@ public partial class MiningViewModel : ObservableObject
             Status = "No session selected";
             return;
         }
-
-        await LoadBackfillOrderFromSessionAsync(session);
 
         if (session.RangeStart.HasValue && session.RangeEnd.HasValue)
         {
@@ -254,69 +255,261 @@ public partial class MiningViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private async Task ReMineAsync()
+    {
+        if (IsMining) return;
+
+        var session = _sessionContext.CurrentSession;
+        if (session == null)
+        {
+            Status = "No session selected";
+            return;
+        }
+
+        var rangeStart = session.RangeStart?.Date;
+        var rangeEnd = session.RangeEnd?.Date;
+
+        var scopeLabel = rangeStart.HasValue && rangeEnd.HasValue
+            ? $"{rangeStart:yyyy-MM-dd} to {rangeEnd:yyyy-MM-dd}"
+            : "ALL HISTORY";
+
+        IsMining = true;
+        Progress = 0;
+        _cancellationTokenSource = new CancellationTokenSource();
+
+        try
+        {
+            Status = $"Re-mining {scopeLabel}...";
+            _logger.LogInfo($"[Mining] Re-mine start: session={session.Id} scope={scopeLabel}");
+
+            await _databaseService.DeleteDaySummariesAsync(session.Id, rangeStart, rangeEnd);
+            await _databaseService.DeleteDaysAsync(session.Id, rangeStart, rangeEnd);
+            await _databaseService.DeleteCommitsAsync(session.Id, rangeStart, rangeEnd);
+
+            var options = await GetSessionOptionsAsync(session);
+            var authorFilters = GetAuthorFilters(session);
+
+            var progressReporter = new Progress<MiningProgress>(p =>
+            {
+                Status = p.Status;
+            });
+
+            var result = await _miningService.MineCommitsAsync(
+                session.Id,
+                session.RepoPath,
+                rangeStart,
+                rangeEnd,
+                options,
+                authorFilters,
+                progressReporter,
+                _cancellationTokenSource.Token);
+
+            DaysMined = result.DaysMined;
+            CommitsFound = result.StoredCommits;
+
+            if (result.Success)
+            {
+                Status = $"Complete! Mined {result.DaysMined} days, {result.StoredCommits} commits.";
+                if (rangeStart.HasValue && rangeEnd.HasValue)
+                    await SaveMiningCheckpointAsync(session.Id, rangeStart.Value, rangeEnd.Value);
+
+                Progress = 100;
+                MiningCompleted?.Invoke(this, EventArgs.Empty);
+                _logger.LogInfo($"[Mining] Re-mine success: days={result.DaysMined} commits={result.StoredCommits}");
+            }
+            else
+            {
+                Status = $"Error: {result.ErrorMessage}";
+                _logger.LogWarning($"[Mining] Re-mine failed: {result.ErrorMessage}");
+
+                System.Windows.MessageBox.Show(
+                    $"Mining failed:\n\n{result.ErrorMessage}\n\n" +
+                    $"Full Details:\n{result.ErrorDetails ?? "No additional details"}",
+                    "Mining Error",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Status = $"Unexpected error: {ex.Message}";
+            _logger.LogError("[Mining] Re-mine unexpected error", ex);
+
+            System.Windows.MessageBox.Show(
+                $"Unexpected mining error:\n\n{ex.Message}\n\n" +
+                $"Type: {ex.GetType().Name}\n\n" +
+                $"Stack Trace:\n{ex.StackTrace}",
+                "Unexpected Mining Error",
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Error);
+        }
+        finally
+        {
+            IsMining = false;
+            _cancellationTokenSource?.Dispose();
+            _cancellationTokenSource = null;
+            _logger.LogInfo("[Mining] Re-mine end");
+        }
+    }
+
+    [RelayCommand]
+    private async Task ReMineKeepSummariesAsync()
+    {
+        if (IsMining) return;
+
+        var session = _sessionContext.CurrentSession;
+        if (session == null)
+        {
+            Status = "No session selected";
+            return;
+        }
+
+        var rangeStart = session.RangeStart?.Date;
+        var rangeEnd = session.RangeEnd?.Date;
+
+        var scopeLabel = rangeStart.HasValue && rangeEnd.HasValue
+            ? $"{rangeStart:yyyy-MM-dd} to {rangeEnd:yyyy-MM-dd}"
+            : "ALL HISTORY";
+
+        IsMining = true;
+        Progress = 0;
+        _cancellationTokenSource = new CancellationTokenSource();
+
+        try
+        {
+            Status = $"Re-mining {scopeLabel} (keeping summaries)...";
+            _logger.LogInfo($"[Mining] Re-mine (keep summaries) start: session={session.Id} scope={scopeLabel}");
+
+            var existingDays = (await _databaseService.GetDaysAsync(session.Id)).ToList();
+            var scopedExisting = existingDays
+                .Where(d => (!rangeStart.HasValue || d.Date.Date >= rangeStart.Value)
+                            && (!rangeEnd.HasValue || d.Date.Date <= rangeEnd.Value))
+                .ToList();
+
+            var previousByDate = scopedExisting.ToDictionary(
+                d => d.Date.Date,
+                d => (d.CommitCount, d.Additions, d.Deletions, d.Status));
+
+            var summaryDays = await _databaseService.GetDaySummaryDaysAsync(session.Id, rangeStart, rangeEnd);
+            var summaryDaySet = new HashSet<DateTime>(summaryDays.Select(d => d.Date));
+            _logger.LogInfo($"[Mining] Re-mine (keep summaries) summary days in scope: {summaryDaySet.Count}");
+
+            var options = await GetSessionOptionsAsync(session);
+            var authorFilters = GetAuthorFilters(session);
+
+            var progressReporter = new Progress<MiningProgress>(p =>
+            {
+                Status = p.Status;
+            });
+
+            var result = await _miningService.MineCommitsAsync(
+                session.Id,
+                session.RepoPath,
+                rangeStart,
+                rangeEnd,
+                options,
+                authorFilters,
+                progressReporter,
+                _cancellationTokenSource.Token);
+
+            var downgraded = 0;
+            if (result.Success)
+            {
+                var afterDays = (await _databaseService.GetDaysAsync(session.Id)).ToList();
+                var scopedAfter = afterDays
+                    .Where(d => (!rangeStart.HasValue || d.Date.Date >= rangeStart.Value)
+                                && (!rangeEnd.HasValue || d.Date.Date <= rangeEnd.Value))
+                    .ToList();
+
+                foreach (var day in scopedAfter)
+                {
+                    var date = day.Date.Date;
+                    if (!summaryDaySet.Contains(date))
+                        continue;
+
+                    var previousExists = previousByDate.TryGetValue(date, out var previous);
+                    var changed = !previousExists ||
+                                  previous.CommitCount != day.CommitCount ||
+                                  previous.Additions != day.Additions ||
+                                  previous.Deletions != day.Deletions;
+
+                    if (changed)
+                    {
+                        if (day.Status != DayStatus.Mined)
+                        {
+                            day.Status = DayStatus.Mined;
+                            downgraded++;
+                            await _databaseService.UpsertDayAsync(day);
+                        }
+                    }
+                    else
+                    {
+                        if (previous.Status == DayStatus.Approved || previous.Status == DayStatus.Summarized)
+                        {
+                            if (day.Status != previous.Status)
+                            {
+                                day.Status = previous.Status;
+                                await _databaseService.UpsertDayAsync(day);
+                            }
+                        }
+                    }
+                }
+            }
+
+            DaysMined = result.DaysMined;
+            CommitsFound = result.StoredCommits;
+
+            if (result.Success)
+            {
+                Status = $"Complete! Mined {result.DaysMined} days, {result.StoredCommits} commits.";
+                if (rangeStart.HasValue && rangeEnd.HasValue)
+                    await SaveMiningCheckpointAsync(session.Id, rangeStart.Value, rangeEnd.Value);
+
+                Progress = 100;
+                MiningCompleted?.Invoke(this, EventArgs.Empty);
+                _logger.LogInfo($"[Mining] Re-mine (keep summaries) success: days={result.DaysMined} commits={result.StoredCommits} downgraded={downgraded}");
+            }
+            else
+            {
+                Status = $"Error: {result.ErrorMessage}";
+                _logger.LogWarning($"[Mining] Re-mine (keep summaries) failed: {result.ErrorMessage}");
+
+                System.Windows.MessageBox.Show(
+                    $"Mining failed:\n\n{result.ErrorMessage}\n\n" +
+                    $"Full Details:\n{result.ErrorDetails ?? "No additional details"}",
+                    "Mining Error",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Status = $"Unexpected error: {ex.Message}";
+            _logger.LogError("[Mining] Re-mine (keep summaries) unexpected error", ex);
+
+            System.Windows.MessageBox.Show(
+                $"Unexpected mining error:\n\n{ex.Message}\n\n" +
+                $"Type: {ex.GetType().Name}\n\n" +
+                $"Stack Trace:\n{ex.StackTrace}",
+                "Unexpected Mining Error",
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Error);
+        }
+        finally
+        {
+            IsMining = false;
+            _cancellationTokenSource?.Dispose();
+            _cancellationTokenSource = null;
+            _logger.LogInfo("[Mining] Re-mine (keep summaries) end");
+        }
+    }
+
+    [RelayCommand]
     private async Task MineLastDaysAsync(int days = 14)
     {
         await RunMiningAsync(days);
     }
 
-    [RelayCommand]
-    private async Task MineLastWindowAsync()
-    {
-        var session = _sessionContext.CurrentSession;
-        if (session == null)
-        {
-            Status = "No session selected";
-            return;
-        }
-
-        await LoadBackfillOrderFromSessionAsync(session);
-
-        if (session.RangeStart.HasValue && session.RangeEnd.HasValue)
-        {
-            Status = "Session uses a fixed range. Backfill not available.";
-            return;
-        }
-
-        var options = await GetSessionOptionsAsync(session);
-        var windowDays = options.WindowSizeDays > 0 ? options.WindowSizeDays : 14;
-        var until = DateTime.Today;
-        var since = until.AddDays(-(windowDays - 1));
-        await RunMiningRangeAsync(since, until, preferGaps: false);
-    }
-
-    [RelayCommand]
-    private async Task BackfillPreviousWindowAsync()
-    {
-        var session = _sessionContext.CurrentSession;
-        if (session == null)
-        {
-            Status = "No session selected";
-            return;
-        }
-
-        await LoadBackfillOrderFromSessionAsync(session);
-
-        if (session.RangeStart.HasValue && session.RangeEnd.HasValue)
-        {
-            Status = "Session uses a fixed range. Backfill not available.";
-            return;
-        }
-
-        var options = await GetSessionOptionsAsync(session);
-        var windowDays = options.WindowSizeDays > 0 ? options.WindowSizeDays : 14;
-        var days = (await _databaseService.GetDaysAsync(session.Id)).ToList();
-        if (days.Count == 0)
-        {
-            await RunMiningAsync(windowDays);
-            return;
-        }
-
-        var oldestDay = days.Min(d => d.Date.Date);
-        var until = oldestDay;
-        var since = until.AddDays(-(windowDays - 1));
-
-        await RunMiningRangeAsync(since, until, preferGaps: options.FillGapsFirst);
-    }
 
     [RelayCommand]
     private void Stop()
@@ -337,32 +530,6 @@ public partial class MiningViewModel : ObservableObject
         await RunMiningAsync(30);
     }
 
-    [RelayCommand]
-    private async Task BackfillOrderAsync()
-    {
-        var session = _sessionContext.CurrentSession;
-        if (session == null)
-        {
-            Status = "No session selected";
-            return;
-        }
-
-        await LoadBackfillOrderFromSessionAsync(session);
-
-        BackfillOrder = BackfillOrder switch
-        {
-            "OldestFirst" => "NewestFirst",
-            "NewestFirst" => "GappedFirst",
-            _ => "OldestFirst"
-        };
-
-        var options = await GetSessionOptionsAsync(session);
-        options.BackfillOrder = BackfillOrder;
-        session.OptionsJson = JsonSerializer.Serialize(options);
-        await _databaseService.UpdateSessionOptionsAsync(session.Id, session.OptionsJson);
-
-        Status = $"Backfill order set to {GetBackfillOrderDisplay(BackfillOrder)}.";
-    }
 
     private async Task SaveMiningCheckpointAsync(int sessionId, DateTime since, DateTime until)
     {

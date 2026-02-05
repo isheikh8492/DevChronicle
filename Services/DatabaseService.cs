@@ -1,4 +1,5 @@
 using System.IO;
+using System.Linq;
 using Dapper;
 using DevChronicle.Models;
 using Microsoft.Data.Sqlite;
@@ -286,6 +287,30 @@ public class DatabaseService
         return await connection.QueryAsync<Commit>(sql, new { SessionId = sessionId, Day = dayStart });
     }
 
+    public async Task<int> DeleteCommitsAsync(int sessionId, DateTime? start, DateTime? end)
+    {
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+
+        if (start.HasValue && end.HasValue)
+        {
+            var sql = @"
+                DELETE FROM commits
+                WHERE session_id = @SessionId
+                  AND DATE(author_date) BETWEEN @Start AND @End";
+            return await connection.ExecuteAsync(sql, new
+            {
+                SessionId = sessionId,
+                Start = start.Value.Date.ToString("yyyy-MM-dd"),
+                End = end.Value.Date.ToString("yyyy-MM-dd")
+            });
+        }
+
+        return await connection.ExecuteAsync(
+            "DELETE FROM commits WHERE session_id = @SessionId",
+            new { SessionId = sessionId });
+    }
+
     // Day operations
     public async Task UpsertDayAsync(Models.Day day)
     {
@@ -350,6 +375,30 @@ public class DatabaseService
             WHERE session_id = @SessionId
             ORDER BY day DESC";
         return await connection.QueryAsync<Models.Day>(sql, new { SessionId = sessionId });
+    }
+
+    public async Task<int> DeleteDaysAsync(int sessionId, DateTime? start, DateTime? end)
+    {
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+
+        if (start.HasValue && end.HasValue)
+        {
+            var sql = @"
+                DELETE FROM days
+                WHERE session_id = @SessionId
+                  AND day BETWEEN @Start AND @End";
+            return await connection.ExecuteAsync(sql, new
+            {
+                SessionId = sessionId,
+                Start = start.Value.Date.ToString("yyyy-MM-dd"),
+                End = end.Value.Date.ToString("yyyy-MM-dd")
+            });
+        }
+
+        return await connection.ExecuteAsync(
+            "DELETE FROM days WHERE session_id = @SessionId",
+            new { SessionId = sessionId });
     }
 
     // Checkpoint operations
@@ -418,6 +467,41 @@ public class DatabaseService
         return await connection.QueryFirstOrDefaultAsync<DaySummary>(sql, new { SessionId = sessionId, Day = dayStart });
     }
 
+    public async Task<List<DateTime>> GetDaySummaryDaysAsync(int sessionId, DateTime? start, DateTime? end)
+    {
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+
+        if (start.HasValue && end.HasValue)
+        {
+            var sql = @"
+                SELECT day
+                FROM day_summaries
+                WHERE session_id = @SessionId
+                  AND day BETWEEN @Start AND @End";
+            var rows = await connection.QueryAsync<string>(sql, new
+            {
+                SessionId = sessionId,
+                Start = start.Value.Date.ToString("yyyy-MM-dd"),
+                End = end.Value.Date.ToString("yyyy-MM-dd")
+            });
+            return rows
+                .Select(d => DateTime.TryParse(d, out var parsed) ? parsed.Date : DateTime.MinValue)
+                .Where(d => d != DateTime.MinValue)
+                .ToList();
+        }
+
+        var allSql = @"
+            SELECT day
+            FROM day_summaries
+            WHERE session_id = @SessionId";
+        var allRows = await connection.QueryAsync<string>(allSql, new { SessionId = sessionId });
+        return allRows
+            .Select(d => DateTime.TryParse(d, out var parsed) ? parsed.Date : DateTime.MinValue)
+            .Where(d => d != DateTime.MinValue)
+            .ToList();
+    }
+
     public async Task UpsertDaySummaryAsync(DaySummary summary)
     {
         using var connection = GetConnection();
@@ -442,5 +526,29 @@ public class DatabaseService
             summary.InputHash,
             summary.CreatedAt
         });
+    }
+
+    public async Task<int> DeleteDaySummariesAsync(int sessionId, DateTime? start, DateTime? end)
+    {
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+
+        if (start.HasValue && end.HasValue)
+        {
+            var sql = @"
+                DELETE FROM day_summaries
+                WHERE session_id = @SessionId
+                  AND day BETWEEN @Start AND @End";
+            return await connection.ExecuteAsync(sql, new
+            {
+                SessionId = sessionId,
+                Start = start.Value.Date.ToString("yyyy-MM-dd"),
+                End = end.Value.Date.ToString("yyyy-MM-dd")
+            });
+        }
+
+        return await connection.ExecuteAsync(
+            "DELETE FROM day_summaries WHERE session_id = @SessionId",
+            new { SessionId = sessionId });
     }
 }

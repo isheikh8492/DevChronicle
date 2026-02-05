@@ -19,15 +19,18 @@ public class MiningService
     public async Task<MiningResult> MineCommitsAsync(
         int sessionId,
         string repoPath,
-        DateTime since,
-        DateTime until,
+        DateTime? since,
+        DateTime? until,
         SessionOptions options,
         List<AuthorFilter> authorFilters,
         IProgress<MiningProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         var result = new MiningResult();
-        _logger.LogInfo($"Mining started for session {sessionId}, repo: {repoPath}, range: {since:yyyy-MM-dd} to {until:yyyy-MM-dd}");
+        var rangeLabel = since.HasValue && until.HasValue
+            ? $"{since.Value:yyyy-MM-dd} to {until.Value:yyyy-MM-dd}"
+            : "ALL HISTORY";
+        _logger.LogInfo($"Mining started for session {sessionId}, repo: {repoPath}, range: {rangeLabel}");
 
         try
         {

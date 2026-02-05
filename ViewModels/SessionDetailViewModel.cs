@@ -107,8 +107,6 @@ public partial class SessionDetailViewModel : ObservableObject
             // Set as current session in context
             _sessionContext.SetCurrentSession(Session);
 
-            await Mining.LoadBackfillOrderFromSessionAsync(Session);
-
             // Load days for this session
             await DayBrowser.LoadDaysAsync(sessionId);
 

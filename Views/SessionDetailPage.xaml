@@ -107,14 +107,11 @@
             <ui:Card Grid.Column="0" VerticalAlignment="Stretch" VerticalContentAlignment="Top">
                 <ui:Card.ContextMenu>
                     <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                        <MenuItem Header="Mine last N days"
-                                  Command="{Binding Mining.MineLastWindowCommand}"
+                        <MenuItem Header="Re-Mine"
+                                  Command="{Binding Mining.ReMineCommand}"
                                   IsEnabled="{Binding Mining.IsMining, Converter={StaticResource InverseBoolConverter}}"/>
-                        <MenuItem Header="Backfill previous N days"
-                                  Command="{Binding Mining.BackfillPreviousWindowCommand}"
-                                  IsEnabled="{Binding Mining.IsMining, Converter={StaticResource InverseBoolConverter}}"/>
-                        <MenuItem Header="{Binding Mining.BackfillOrderLabel}"
-                                  Command="{Binding Mining.BackfillOrderCommand}"
+                        <MenuItem Header="Re-Mine (Keep Summaries &amp; Evidence)"
+                                  Command="{Binding Mining.ReMineKeepSummariesCommand}"
                                   IsEnabled="{Binding Mining.IsMining, Converter={StaticResource InverseBoolConverter}}"/>
                     </ContextMenu>
                 </ui:Card.ContextMenu>
