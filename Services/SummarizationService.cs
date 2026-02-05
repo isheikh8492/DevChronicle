@@ -1,3 +1,5 @@
+using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -9,20 +11,25 @@ public class SummarizationService
 {
     private readonly DatabaseService _databaseService;
     private readonly ClusteringService _clusteringService;
-    private object? _openAIClient; // Placeholder for OpenAI client - implement when needed
+    private readonly SettingsService _settingsService;
     private string _modelName = "gpt-4o-mini";
     private const string PromptVersion = "v1";
+    private static readonly HttpClient Http = new HttpClient
+    {
+        BaseAddress = new Uri("https://api.openai.com/v1/")
+    };
+    private string? _apiKey;
 
-    public SummarizationService(DatabaseService databaseService, ClusteringService clusteringService)
+    public SummarizationService(DatabaseService databaseService, ClusteringService clusteringService, SettingsService settingsService)
     {
         _databaseService = databaseService;
         _clusteringService = clusteringService;
+        _settingsService = settingsService;
     }
 
     public void ConfigureOpenAI(string apiKey, string? modelName = null)
     {
-        // TODO: Initialize OpenAI client when package is properly configured
-        // _openAIClient = new OpenAIClient(apiKey);
+        _apiKey = apiKey;
         if (!string.IsNullOrWhiteSpace(modelName))
             _modelName = modelName;
     }
@@ -59,16 +66,15 @@ public class SummarizationService
 
             // Call OpenAI or generate offline summary
             string bulletsText;
-            if (_openAIClient != null)
+            var apiKey = await GetApiKeyAsync();
+            if (string.IsNullOrWhiteSpace(apiKey))
             {
-                bulletsText = await CallOpenAIAsync(prompt, cancellationToken);
-                result.UsedAI = true;
+                result.ErrorMessage = "Missing OPENAI_API_KEY. Set it in your environment to enable AI summarization.";
+                return result;
             }
-            else
-            {
-                bulletsText = GenerateOfflineSummary(commits, workUnits);
-                result.UsedAI = false;
-            }
+
+            bulletsText = await CallOpenAIAsync(prompt, apiKey, cancellationToken);
+            result.UsedAI = true;
 
             // Validate and clean bullets
             var bullets = ValidateBullets(bulletsText, maxBullets);
@@ -138,15 +144,40 @@ public class SummarizationService
         return sb.ToString();
     }
 
-    private async Task<string> CallOpenAIAsync(string prompt, CancellationToken cancellationToken)
+    private async Task<string> CallOpenAIAsync(string prompt, string apiKey, CancellationToken cancellationToken)
     {
-        if (_openAIClient == null)
-            throw new InvalidOperationException("OpenAI client not configured");
+        var system = "You are a concise developer diary generator. Output ONLY bullet points that start with '- '.";
 
-        // TODO: Implement OpenAI API call when package is configured
-        // For now, fall back to offline mode
-        await Task.Delay(100, cancellationToken); // Simulate API call
-        throw new InvalidOperationException("OpenAI integration not yet implemented - using offline mode");
+        var payload = new
+        {
+            model = _modelName,
+            messages = new[]
+            {
+                new { role = "developer", content = system },
+                new { role = "user", content = prompt }
+            },
+            temperature = 0.2,
+            max_completion_tokens = 600,
+            store = false
+        };
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "chat/completions");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+        request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+        using var response = await Http.SendAsync(request, cancellationToken);
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"OpenAI API error: {response.StatusCode} - {json}");
+
+        using var doc = JsonDocument.Parse(json);
+        var content = doc.RootElement
+            .GetProperty("choices")[0]
+            .GetProperty("message")
+            .GetProperty("content")
+            .GetString();
+
+        return content ?? string.Empty;
     }
 
     private string GenerateOfflineSummary(List<Commit> commits, List<WorkUnit> workUnits)
@@ -182,6 +213,20 @@ public class SummarizationService
         }
 
         return bullets;
+    }
+
+    private async Task<string?> GetApiKeyAsync()
+    {
+        var apiKey = _apiKey;
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            apiKey = await _settingsService.GetAsync(SettingsService.OpenAiApiKeyKey, string.Empty);
+        }
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY") ?? string.Empty;
+        }
+        return string.IsNullOrWhiteSpace(apiKey) ? null : apiKey;
     }
 
     private string ComputeInputHash(List<Commit> commits, DateTime day)

@@ -27,15 +27,34 @@
                     <TextBlock
                         FontSize="12"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                        Text="API Key is stored securely in Windows Credential Manager"
+                        Text="API Key is stored securely in the database"
                         Margin="0,0,0,12"/>
-                    <ui:PasswordBox
-                        PlaceholderText="Enter your OpenAI API key"
-                        Margin="0,0,0,12"/>
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <ui:TextBox x:Name="OpenAiApiKeyBox"
+                            Grid.Column="0"
+                            PlaceholderText="Enter your OpenAI API key"
+                            Text="{Binding DisplayedApiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                            Margin="0,0,8,0"
+                            GotFocus="OpenAiApiKeyBox_GotFocus"
+                            TextChanged="OpenAiApiKeyBox_TextChanged"/>
+                        <ui:Button
+                            Grid.Column="1"
+                            Command="{Binding ToggleApiKeyVisibilityCommand}"
+                            ToolTip="Show/Hide API Key"
+                            Appearance="Secondary"
+                            Padding="8">
+                            <ui:SymbolIcon Symbol="{Binding IsApiKeyVisible, Converter={StaticResource BoolToEyeIconConverter}}"/>
+                        </ui:Button>
+                    </Grid>
                     <ui:Button
                         Content="Save API Key"
                         Icon="{ui:SymbolIcon Save24}"
                         Appearance="Primary"
+                        Click="SaveApiKey_Click"
                         HorizontalAlignment="Left"/>
                 </StackPanel>
             </ui:Card>

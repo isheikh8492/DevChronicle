@@ -17,6 +17,7 @@
             <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
             <converters:CountAndNotMiningToVisibilityConverter x:Key="CountAndNotMiningToVisibilityConverter"/>
             <converters:SelectedDayAndNotSummarizingConverter x:Key="SelectedDayAndNotSummarizingConverter"/>
+            <converters:BoolToEyeIconConverter x:Key="BoolToEyeIconConverter"/>
         </ResourceDictionary>
     </Application.Resources>
 </Application>
