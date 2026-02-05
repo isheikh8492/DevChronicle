@@ -5,7 +5,8 @@
       Title="Session Detail"
       Foreground="{DynamicResource TextFillColorPrimaryBrush}">
 
-    <Grid Margin="56,24,56,24">
+    <Grid MaxHeight="{Binding ActualHeight, RelativeSource={RelativeSource AncestorType=ScrollContentPresenter}, FallbackValue=800}">
+        <Grid x:Name="RootGrid" Margin="56,24,56,24">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -95,7 +96,7 @@
         </ui:Card>
 
         <!-- Main Content: Day List + Detail Pane (No page scroll) -->
-        <Grid Grid.Row="2">
+        <Grid x:Name="MainContentGrid" Grid.Row="2">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="320"/>
                 <ColumnDefinition Width="12"/>
@@ -313,7 +314,7 @@
             </ui:Card>
 
             <!-- Right: Detail Pane with Segmented Switch -->
-            <ui:Card Grid.Column="2" VerticalAlignment="Stretch" VerticalContentAlignment="Top">
+            <ui:Card x:Name="DetailPaneCard" Grid.Column="2" VerticalAlignment="Stretch" VerticalContentAlignment="Top">
                 <Border Padding="20,20,20,16" VerticalAlignment="Stretch">
                     <Grid>
                         <Grid.RowDefinitions>
@@ -345,11 +346,12 @@
                         </Grid>
 
                         <!-- Summary + Evidence Tabs -->
-                        <Grid Grid.Row="1" VerticalAlignment="Stretch" MinHeight="0">
-                            <TabControl MinHeight="0">
+                        <Grid x:Name="TabsContainerGrid" Grid.Row="1" VerticalAlignment="Stretch" MinHeight="0">
+                            <TabControl x:Name="DetailTabControl" MinHeight="0">
                                 <TabItem Header="Summary">
-                                    <ScrollViewer VerticalScrollBarVisibility="Auto"
-                                                  HorizontalScrollBarVisibility="Disabled">
+                                    <ScrollViewer x:Name="SummaryScrollViewer" VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Disabled"
+                                                  MaxHeight="{Binding ActualHeight, ElementName=TabsContainerGrid, FallbackValue=400}">
                                         <StackPanel Margin="8,12,8,12">
                                             <ItemsControl ItemsSource="{Binding SelectedDayBullets}">
                                                 <ItemsControl.Style>
@@ -393,8 +395,9 @@
                                 </TabItem>
 
                                 <TabItem Header="Evidence">
-                                    <ScrollViewer VerticalScrollBarVisibility="Auto"
-                                                  HorizontalScrollBarVisibility="Disabled">
+                                    <ScrollViewer x:Name="EvidenceScrollViewer" VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Disabled"
+                                                  MaxHeight="{Binding ActualHeight, ElementName=TabsContainerGrid, FallbackValue=400}">
                                         <StackPanel Margin="8,12,8,12">
                                             <ItemsControl ItemsSource="{Binding SelectedDayEvidence}">
                                                 <ItemsControl.Style>
@@ -466,6 +469,7 @@
                     </Grid>
                 </Border>
             </ui:Card>
+        </Grid>
         </Grid>
     </Grid>
 </Page>
