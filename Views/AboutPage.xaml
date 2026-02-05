@@ -20,13 +20,9 @@
 
             <ui:Card>
                 <StackPanel Margin="20">
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                        <ui:SymbolIcon Symbol="Info24" FontSize="20" Margin="0,0,12,0"/>
-                        <TextBlock FontSize="16" FontWeight="Medium" Text="DevChronicle" VerticalAlignment="Center"/>
-                    </StackPanel>
                     <TextBlock FontSize="14" Text="DevChronicle" FontWeight="Medium" Margin="0,0,0,4"/>
-                    <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Version 1.0.0 (MVP)" Margin="0,0,0,4"/>
-                    <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Session-based developer diary and resume generator from Git history"/>
+                    <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Version 1.0.0" Margin="0,0,0,4"/>
+                    <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Session-based developer diary and resume generator from Git history."/>
                 </StackPanel>
             </ui:Card>
         </StackPanel>
