@@ -276,6 +276,7 @@
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
                             <ui:InfoBar Grid.Row="0"
@@ -286,7 +287,15 @@
                                         Visibility="{Binding Mining.IsMining, Converter={StaticResource BooleanToVisibilityConverter}}"
                                         IsClosable="False"/>
 
-                            <ui:InfoBar Grid.Row="1"
+                            <ProgressBar Grid.Row="1"
+                                         Height="4"
+                                         Margin="0,8,0,0"
+                                         Maximum="100"
+                                         Minimum="0"
+                                         Value="{Binding Mining.Progress}"
+                                         Visibility="{Binding Mining.IsMining, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+
+                            <ui:InfoBar Grid.Row="2"
                                         Title="No Days Found"
                                         Message="Mine commits to populate this session with days."
                                         Severity="Informational"
@@ -335,56 +344,123 @@
                                     Background="{DynamicResource CardStrokeColorDefaultBrush}"/>
                         </Grid>
 
-                        <!-- Summary Preview -->
+                        <!-- Summary + Evidence Tabs -->
                         <Grid Grid.Row="1" VerticalAlignment="Top">
-                            <StackPanel>
-                                <TextBlock Text="SUMMARY PREVIEW"
-                                           FontSize="12"
-                                           FontWeight="SemiBold"
-                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                           Margin="0,0,0,12"/>
+                            <TabControl>
+                                <TabItem Header="Summary">
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <StackPanel Margin="8,12,8,12">
+                                            <ItemsControl ItemsSource="{Binding SelectedDayBullets}">
+                                                <ItemsControl.Style>
+                                                    <Style TargetType="ItemsControl">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding HasSelectedDaySummary}" Value="False">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </ItemsControl.Style>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                                            <TextBlock Text="•"
+                                                                       FontSize="14"
+                                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                                       Margin="0,0,8,0"/>
+                                                            <TextBlock Text="{Binding}"
+                                                                       TextWrapping="Wrap"
+                                                                       FontSize="13"/>
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
 
-                                <ItemsControl ItemsSource="{Binding SelectedDayBullets}">
-                                    <ItemsControl.Style>
-                                        <Style TargetType="ItemsControl">
-                                            <Setter Property="Visibility" Value="Visible"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding HasSelectedDaySummary}" Value="False">
-                                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </ItemsControl.Style>
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                                <TextBlock Text="•"
-                                                           FontSize="14"
-                                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                           Margin="0,0,8,0"/>
-                                                <TextBlock Text="{Binding}"
-                                                           TextWrapping="Wrap"
-                                                           FontSize="13"/>
-                                            </StackPanel>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
+                                            <TextBlock Text="No summary yet. Select a day and run summarization."
+                                                       FontSize="12"
+                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding HasSelectedDaySummary}" Value="False">
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </ScrollViewer>
+                                </TabItem>
 
-                                <TextBlock Text="No summary yet. Select a day and run summarization."
-                                           FontSize="12"
-                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="Visibility" Value="Collapsed"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding HasSelectedDaySummary}" Value="False">
-                                                    <Setter Property="Visibility" Value="Visible"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                            </StackPanel>
+                                <TabItem Header="Evidence">
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <StackPanel Margin="8,12,8,12">
+                                            <ItemsControl ItemsSource="{Binding SelectedDayEvidence}">
+                                                <ItemsControl.Style>
+                                                    <Style TargetType="ItemsControl">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding HasSelectedDayEvidence}" Value="False">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </ItemsControl.Style>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                                                BorderThickness="1"
+                                                                CornerRadius="8"
+                                                                Padding="10"
+                                                                Margin="0,0,0,10">
+                                                            <StackPanel>
+                                                                <TextBlock FontWeight="SemiBold">
+                                                                    <Run Text="["/>
+                                                                    <Run Text="{Binding Sha, Mode=OneWay}"/>
+                                                                    <Run Text="] "/>
+                                                                    <Run Text="{Binding Subject, Mode=OneWay}"/>
+                                                                </TextBlock>
+                                                                <ItemsControl ItemsSource="{Binding Files}">
+                                                                    <ItemsControl.ItemTemplate>
+                                                                        <DataTemplate>
+                                                                            <TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                                                       Margin="12,4,0,0">
+                                                                                <Run Text="{Binding Path, Mode=OneWay}"/>
+                                                                                <Run Text=" (+" />
+                                                                                <Run Text="{Binding Additions, Mode=OneWay}"/>
+                                                                                <Run Text=" / -" />
+                                                                                <Run Text="{Binding Deletions, Mode=OneWay}"/>
+                                                                                <Run Text=")"/>
+                                                                            </TextBlock>
+                                                                        </DataTemplate>
+                                                                    </ItemsControl.ItemTemplate>
+                                                                </ItemsControl>
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+
+                                            <TextBlock Text="No evidence yet for this day."
+                                                       FontSize="12"
+                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding HasSelectedDayEvidence}" Value="False">
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </ScrollViewer>
+                                </TabItem>
+                            </TabControl>
                         </Grid>
                     </Grid>
                 </Border>

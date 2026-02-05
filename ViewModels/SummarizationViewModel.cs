@@ -159,7 +159,7 @@ public partial class SummarizationViewModel : ObservableObject
 
             if (result.Success)
             {
-                day.Day.Status = DayStatus.Summarized;
+                day.SetStatus(DayStatus.Summarized);
                 await _databaseService.UpsertDayAsync(day.Day);
 
                 DaysSummarized++;

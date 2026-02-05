@@ -4,6 +4,8 @@ using System.Windows;
 using System.Collections.Generic;
 using DevChronicle.Models;
 using Wpf.Ui.Controls;
+using DevChronicle.Services;
+using Microsoft.Extensions.DependencyInjection;
 using WinForms = System.Windows.Forms;
 
 namespace DevChronicle.Views.Windows;
@@ -11,10 +13,12 @@ namespace DevChronicle.Views.Windows;
 public partial class CreateSessionDialog : FluentWindow
 {
     public Session? Result { get; private set; }
+    private readonly SettingsService _settingsService;
 
     public CreateSessionDialog()
     {
         InitializeComponent();
+        _settingsService = App.ServiceProvider.GetRequiredService<SettingsService>();
 
         // Set default session name
         SessionNameTextBox.Text = $"Session {DateTime.Now:yyyy-MM-dd}";
@@ -51,7 +55,7 @@ public partial class CreateSessionDialog : FluentWindow
         }
     }
 
-    private void CreateButton_Click(object sender, RoutedEventArgs e)
+    private async void CreateButton_Click(object sender, RoutedEventArgs e)
     {
         // Validate inputs
         if (string.IsNullOrWhiteSpace(SessionNameTextBox.Text))
@@ -122,10 +126,8 @@ public partial class CreateSessionDialog : FluentWindow
             }
         }
 
-        var options = new SessionOptions
-        {
-            IncludeMerges = IncludeMergesCheckBox != null && IncludeMergesCheckBox.IsChecked == true
-        };
+        var options = await _settingsService.GetDefaultSessionOptionsAsync();
+        options.IncludeMerges = IncludeMergesCheckBox != null && IncludeMergesCheckBox.IsChecked == true;
 
         // Create the session object
         Result = new Session

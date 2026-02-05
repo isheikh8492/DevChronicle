@@ -85,6 +85,7 @@ namespace DevChronicle
             services.AddSingleton<MiningService>();
             services.AddSingleton<SummarizationService>();
             services.AddSingleton<ExportService>();
+            services.AddSingleton<SettingsService>();
             services.AddSingleton<SessionContextService>();
 
             // Register ViewModels
@@ -96,6 +97,7 @@ namespace DevChronicle
             services.AddTransient<SummarizationViewModel>();
             services.AddTransient<ExportViewModel>();
             services.AddTransient<DayBrowserViewModel>();
+            services.AddTransient<SettingsViewModel>();
 
             // Register Windows and Pages
             _logger?.LogInfo("Registering Windows and Pages...");

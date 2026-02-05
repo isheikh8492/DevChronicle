@@ -49,8 +49,13 @@
 
                     <ui:CardControl Margin="0,0,0,12">
                         <StackPanel Margin="16">
-                            <CheckBox Content="Include merge commits" Margin="0,0,0,8" FontSize="14"/>
-                            <CheckBox Content="Include diffs in summarization" FontSize="14"/>
+                            <CheckBox Content="Include merge commits"
+                                      Margin="0,0,0,8"
+                                      FontSize="14"
+                                      IsChecked="{Binding IncludeMerges, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                            <CheckBox Content="Include diffs in summarization"
+                                      FontSize="14"
+                                      IsChecked="{Binding IncludeDiffs, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                         </StackPanel>
                     </ui:CardControl>
 
@@ -64,17 +69,61 @@
                         <ui:CardControl Grid.Column="0">
                             <StackPanel Margin="16">
                                 <TextBlock Text="Window size (days)" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,8"/>
-                                <ui:NumberBox Value="14" Minimum="1" Maximum="90" SpinButtonPlacementMode="Inline"/>
+                                <ui:NumberBox Value="{Binding WindowSizeDays, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                              Minimum="1"
+                                              Maximum="90"
+                                              SpinButtonPlacementMode="Inline"/>
                             </StackPanel>
                         </ui:CardControl>
 
                         <ui:CardControl Grid.Column="2">
                             <StackPanel Margin="16">
                                 <TextBlock Text="Max bullets per day" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,8"/>
-                                <ui:NumberBox Value="6" Minimum="4" Maximum="10" SpinButtonPlacementMode="Inline"/>
+                                <ui:NumberBox Value="{Binding MaxBulletsPerDay, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                              Minimum="4"
+                                              Maximum="10"
+                                              SpinButtonPlacementMode="Inline"/>
                             </StackPanel>
                         </ui:CardControl>
                     </Grid>
+
+                    <Grid Margin="0,16,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="16"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <ui:CardControl Grid.Column="0">
+                            <StackPanel Margin="16">
+                                <TextBlock Text="Overlap days" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,8"/>
+                                <ui:NumberBox Value="{Binding OverlapDays, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                              Minimum="0"
+                                              Maximum="14"
+                                              SpinButtonPlacementMode="Inline"/>
+                            </StackPanel>
+                        </ui:CardControl>
+
+                        <ui:CardControl Grid.Column="2">
+                            <StackPanel Margin="16">
+                                <TextBlock Text="Backfill order" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,8"/>
+                                <ComboBox SelectedValuePath="Tag"
+                                          SelectedValue="{Binding BackfillOrder, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                    <ComboBoxItem Content="Oldest first" Tag="OldestFirst"/>
+                                    <ComboBoxItem Content="Newest first" Tag="NewestFirst"/>
+                                    <ComboBoxItem Content="Fill gaps first" Tag="GappedFirst"/>
+                                </ComboBox>
+                            </StackPanel>
+                        </ui:CardControl>
+                    </Grid>
+
+                    <ui:CardControl Margin="0,12,0,0">
+                        <StackPanel Margin="16">
+                            <CheckBox Content="Fill gaps first"
+                                      FontSize="14"
+                                      IsChecked="{Binding FillGapsFirst, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                        </StackPanel>
+                    </ui:CardControl>
                 </StackPanel>
             </ui:Card>
 

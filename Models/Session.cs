@@ -21,6 +21,8 @@ public class SessionOptions
     public int MaxBulletsPerDay { get; set; } = 6;
     public int MaxTokens { get; set; } = 2000;
     public string BackfillOrder { get; set; } = "OldestFirst";
+    public int OverlapDays { get; set; } = 1;
+    public bool FillGapsFirst { get; set; }
 }
 
 public class AuthorFilter

@@ -17,9 +17,13 @@ public partial class DayViewModel : ObservableObject
     [ObservableProperty]
     private bool isExpanded;
 
+    [ObservableProperty]
+    private DayStatus status;
+
     public DayViewModel(Models.Day day)
     {
         Day = day;
+        status = day.Status;
     }
 
     public int SessionId => Day.SessionId;
@@ -27,7 +31,11 @@ public partial class DayViewModel : ObservableObject
     public int CommitCount => Day.CommitCount;
     public int Additions => Day.Additions;
     public int Deletions => Day.Deletions;
-    public DayStatus Status => Day.Status;
+    public void SetStatus(DayStatus newStatus)
+    {
+        Day.Status = newStatus;
+        Status = newStatus;
+    }
 }
 
 /// <summary>
@@ -124,8 +132,14 @@ public partial class DayBrowserViewModel : ObservableObject
         var dayVM = Days.FirstOrDefault(d => d.Date.Date == date.Date);
         if (dayVM != null)
         {
-            dayVM.Day.Status = newStatus;
-            OnPropertyChanged(nameof(Days)); // Trigger UI update
+            if (System.Windows.Application.Current.Dispatcher.CheckAccess())
+            {
+                dayVM.SetStatus(newStatus);
+            }
+            else
+            {
+                System.Windows.Application.Current.Dispatcher.Invoke(() => dayVM.SetStatus(newStatus));
+            }
         }
     }
 

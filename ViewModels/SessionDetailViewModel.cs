@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Collections.ObjectModel;
+using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DevChronicle.Models;
@@ -33,6 +34,12 @@ public partial class SessionDetailViewModel : ObservableObject
 
     [ObservableProperty]
     private bool hasSelectedDaySummary;
+
+    [ObservableProperty]
+    private ObservableCollection<CommitEvidenceViewModel> selectedDayEvidence = new();
+
+    [ObservableProperty]
+    private bool hasSelectedDayEvidence;
 
     /// <summary>
     /// Phase A: Mining ViewModel
@@ -100,7 +107,7 @@ public partial class SessionDetailViewModel : ObservableObject
             // Set as current session in context
             _sessionContext.SetCurrentSession(Session);
 
-            Mining.LoadBackfillOrderFromSession(Session);
+            await Mining.LoadBackfillOrderFromSessionAsync(Session);
 
             // Load days for this session
             await DayBrowser.LoadDaysAsync(sessionId);
@@ -109,6 +116,7 @@ public partial class SessionDetailViewModel : ObservableObject
             await Summarization.UpdatePendingCountAsync();
 
             await LoadSelectedDaySummaryAsync();
+            await LoadSelectedDayEvidenceAsync();
 
             // Auto-start mining when a new session has no days yet
             if (DayBrowser.Days.Count == 0)
@@ -160,6 +168,7 @@ public partial class SessionDetailViewModel : ObservableObject
         if (selected != null && selected.Date.Date == day.Date)
         {
             _ = LoadSelectedDaySummaryAsync();
+            _ = LoadSelectedDayEvidenceAsync();
         }
     }
 
@@ -168,6 +177,7 @@ public partial class SessionDetailViewModel : ObservableObject
         if (e.PropertyName == nameof(DayBrowser.SelectedDay))
         {
             _ = LoadSelectedDaySummaryAsync();
+            _ = LoadSelectedDayEvidenceAsync();
         }
     }
 
@@ -210,6 +220,54 @@ public partial class SessionDetailViewModel : ObservableObject
                 SelectedDayBullets.Add(bullet);
 
             HasSelectedDaySummary = SelectedDayBullets.Count > 0;
+        });
+    }
+
+    private async Task LoadSelectedDayEvidenceAsync()
+    {
+        var session = _sessionContext.CurrentSession;
+        var selectedDay = DayBrowser.SelectedDay;
+
+        if (session == null || selectedDay == null)
+        {
+            await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                SelectedDayEvidence.Clear();
+                HasSelectedDayEvidence = false;
+            });
+            return;
+        }
+
+        var commits = (await _databaseService.GetCommitsForDayAsync(session.Id, selectedDay.Date)).ToList();
+        var evidence = new List<CommitEvidenceViewModel>();
+
+        foreach (var commit in commits)
+        {
+            var files = new List<FileEvidenceViewModel>();
+            try
+            {
+                var parsed = JsonSerializer.Deserialize<List<CommitFile>>(commit.FilesJson) ?? new List<CommitFile>();
+                foreach (var file in parsed)
+                {
+                    files.Add(new FileEvidenceViewModel(file.Path, file.Additions, file.Deletions));
+                }
+            }
+            catch
+            {
+                // Ignore parse errors; keep files empty.
+            }
+
+            var shortSha = commit.Sha.Length > 7 ? commit.Sha.Substring(0, 7) : commit.Sha;
+            evidence.Add(new CommitEvidenceViewModel(shortSha, commit.Subject, files));
+        }
+
+        await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+        {
+            SelectedDayEvidence.Clear();
+            foreach (var item in evidence)
+                SelectedDayEvidence.Add(item);
+
+            HasSelectedDayEvidence = SelectedDayEvidence.Count > 0;
         });
     }
 }

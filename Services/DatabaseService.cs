@@ -47,6 +47,13 @@ public class DatabaseService
                 range_end TEXT
             )");
 
+        // Create app settings table
+        connection.Execute(@"
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )");
+
         // Create checkpoints table
         connection.Execute(@"
             CREATE TABLE IF NOT EXISTS checkpoints (
@@ -193,6 +200,26 @@ public class DatabaseService
         await connection.ExecuteAsync(
             "UPDATE sessions SET options_json = @OptionsJson WHERE id = @Id",
             new { OptionsJson = optionsJson, Id = sessionId });
+    }
+
+    public async Task<string?> GetAppSettingAsync(string key)
+    {
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+        return await connection.QueryFirstOrDefaultAsync<string?>(
+            "SELECT value FROM app_settings WHERE key = @Key",
+            new { Key = key });
+    }
+
+    public async Task UpsertAppSettingAsync(string key, string value)
+    {
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+        await connection.ExecuteAsync(@"
+            INSERT INTO app_settings (key, value)
+            VALUES (@Key, @Value)
+            ON CONFLICT(key) DO UPDATE SET value = @Value",
+            new { Key = key, Value = value });
     }
 
     // Commit operations
