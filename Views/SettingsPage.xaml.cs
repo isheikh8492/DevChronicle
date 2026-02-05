@@ -47,5 +47,11 @@ namespace DevChronicle.Views
 
             System.Windows.MessageBox.Show("OpenAI API key saved.", "Settings", MessageBoxButton.OK, MessageBoxImage.Information);
         }
+
+        private async void SaveMasterPrompt_Click(object sender, RoutedEventArgs e)
+        {
+            await ViewModel.SaveMasterPromptAsync();
+            System.Windows.MessageBox.Show("Master prompt saved.", "Settings", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
     }
 }

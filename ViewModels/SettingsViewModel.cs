@@ -39,6 +39,9 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool isEditingApiKey;
 
+    [ObservableProperty]
+    private string masterPromptText = string.Empty;
+
     private string _actualApiKey = string.Empty;
 
     public SettingsViewModel(SettingsService settingsService)
@@ -57,6 +60,7 @@ public partial class SettingsViewModel : ObservableObject
         FillGapsFirst = await _settingsService.GetAsync(SettingsService.MiningFillGapsFirstKey, false);
         BackfillOrder = await _settingsService.GetAsync(SettingsService.MiningBackfillOrderKey, "OldestFirst");
         _actualApiKey = await _settingsService.GetAsync(SettingsService.OpenAiApiKeyKey, string.Empty);
+        MasterPromptText = await _settingsService.GetAsync(SettingsService.SummarizationMasterPromptKey, string.Empty);
         UpdateDisplayedApiKey();
     }
 
@@ -106,5 +110,10 @@ public partial class SettingsViewModel : ObservableObject
         await _settingsService.SetAsync(SettingsService.OpenAiApiKeyKey, newApiKey);
         IsEditingApiKey = false;
         UpdateDisplayedApiKey();
+    }
+
+    public async Task SaveMasterPromptAsync()
+    {
+        await _settingsService.SetAsync(SettingsService.SummarizationMasterPromptKey, MasterPromptText ?? string.Empty);
     }
 }

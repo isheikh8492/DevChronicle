@@ -61,6 +61,35 @@
 
             <ui:Card Margin="0,0,0,16">
                 <StackPanel Margin="20">
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                        <ui:SymbolIcon Symbol="TextT24" FontSize="20" Margin="0,0,12,0"/>
+                        <TextBlock FontSize="16" FontWeight="Medium" Text="Summarization Master Prompt" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <TextBlock
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Text="This prompt is used as the developer message for OpenAI summarization."
+                        Margin="0,0,0,12"/>
+                    <ui:TextBox
+                        AcceptsReturn="True"
+                        TextWrapping="Wrap"
+                        VerticalScrollBarVisibility="Auto"
+                        Height="140"
+                        MaxHeight="200"
+                        Text="{Binding MasterPromptText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        PlaceholderText="Enter your master prompt"
+                        Margin="0,0,0,12"/>
+                    <ui:Button
+                        Content="Save Prompt"
+                        Icon="{ui:SymbolIcon Save24}"
+                        Appearance="Primary"
+                        Click="SaveMasterPrompt_Click"
+                        HorizontalAlignment="Left"/>
+                </StackPanel>
+            </ui:Card>
+
+            <ui:Card Margin="0,0,0,16">
+                <StackPanel Margin="20">
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
                         <ui:SymbolIcon Symbol="Settings24" FontSize="20" Margin="0,0,12,0"/>
                         <TextBlock FontSize="16" FontWeight="Medium" Text="Processing Options" VerticalAlignment="Center"/>

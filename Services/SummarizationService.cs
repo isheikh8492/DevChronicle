@@ -14,6 +14,8 @@ public class SummarizationService
     private readonly SettingsService _settingsService;
     private string _modelName = "gpt-4o-mini";
     private const string PromptVersion = "v1";
+    private const string DefaultMasterPrompt =
+        "You are a concise developer diary generator. Output ONLY bullet points that start with '- '.";
     private static readonly HttpClient Http = new HttpClient
     {
         BaseAddress = new Uri("https://api.openai.com/v1/")
@@ -73,7 +75,8 @@ public class SummarizationService
                 return result;
             }
 
-            bulletsText = await CallOpenAIAsync(prompt, apiKey, cancellationToken);
+            var masterPrompt = await GetMasterPromptAsync();
+            bulletsText = await CallOpenAIAsync(masterPrompt, prompt, apiKey, cancellationToken);
             result.UsedAI = true;
 
             // Validate and clean bullets
@@ -144,16 +147,14 @@ public class SummarizationService
         return sb.ToString();
     }
 
-    private async Task<string> CallOpenAIAsync(string prompt, string apiKey, CancellationToken cancellationToken)
+    private async Task<string> CallOpenAIAsync(string systemPrompt, string prompt, string apiKey, CancellationToken cancellationToken)
     {
-        var system = "You are a concise developer diary generator. Output ONLY bullet points that start with '- '.";
-
         var payload = new
         {
             model = _modelName,
             messages = new[]
             {
-                new { role = "developer", content = system },
+                new { role = "developer", content = systemPrompt },
                 new { role = "user", content = prompt }
             },
             temperature = 0.2,
@@ -227,6 +228,12 @@ public class SummarizationService
             apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY") ?? string.Empty;
         }
         return string.IsNullOrWhiteSpace(apiKey) ? null : apiKey;
+    }
+
+    private async Task<string> GetMasterPromptAsync()
+    {
+        var prompt = await _settingsService.GetAsync(SettingsService.SummarizationMasterPromptKey, DefaultMasterPrompt);
+        return string.IsNullOrWhiteSpace(prompt) ? DefaultMasterPrompt : prompt;
     }
 
     private string ComputeInputHash(List<Commit> commits, DateTime day)

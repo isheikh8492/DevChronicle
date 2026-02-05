@@ -1,4 +1,7 @@
-﻿using System.Windows;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Navigation;
 using Wpf.Ui.Appearance;
 using Wpf.Ui.Controls;
 using DevChronicle.Views;
@@ -28,8 +31,41 @@ namespace DevChronicle
 
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
+            ConfigureNavigationViewContentPresenter();
+
             // Navigate to Dashboard on startup
             RootNavigationView.Navigate(typeof(DashboardPage));
+        }
+
+        private void ConfigureNavigationViewContentPresenter()
+        {
+            RootNavigationView.ApplyTemplate();
+
+            var presenter = FindVisualChild<NavigationViewContentPresenter>(RootNavigationView);
+            if (presenter == null)
+                return;
+
+            presenter.JournalOwnership = JournalOwnership.OwnsJournal;
+            presenter.NavigationUIVisibility = NavigationUIVisibility.Hidden;
+            ScrollViewer.SetVerticalScrollBarVisibility(presenter, ScrollBarVisibility.Disabled);
+            ScrollViewer.SetHorizontalScrollBarVisibility(presenter, ScrollBarVisibility.Disabled);
+        }
+
+        private static T? FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
+        {
+            var count = VisualTreeHelper.GetChildrenCount(parent);
+            for (var i = 0; i < count; i++)
+            {
+                var child = VisualTreeHelper.GetChild(parent, i);
+                if (child is T typedChild)
+                    return typedChild;
+
+                var found = FindVisualChild<T>(child);
+                if (found != null)
+                    return found;
+            }
+
+            return null;
         }
 
         private void RootNavigationView_Navigated(NavigationView sender, NavigatedEventArgs args)
@@ -106,3 +142,5 @@ namespace DevChronicle
         }
     }
 }
+
+

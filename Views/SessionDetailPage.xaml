@@ -314,7 +314,7 @@
 
             <!-- Right: Detail Pane with Segmented Switch -->
             <ui:Card Grid.Column="2" VerticalAlignment="Stretch" VerticalContentAlignment="Top">
-                <Border Padding="20,20,20,16" VerticalAlignment="Top">
+                <Border Padding="20,20,20,16" VerticalAlignment="Stretch">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
@@ -345,10 +345,11 @@
                         </Grid>
 
                         <!-- Summary + Evidence Tabs -->
-                        <Grid Grid.Row="1" VerticalAlignment="Top">
-                            <TabControl>
+                        <Grid Grid.Row="1" VerticalAlignment="Stretch" MinHeight="0">
+                            <TabControl MinHeight="0">
                                 <TabItem Header="Summary">
-                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Disabled">
                                         <StackPanel Margin="8,12,8,12">
                                             <ItemsControl ItemsSource="{Binding SelectedDayBullets}">
                                                 <ItemsControl.Style>
@@ -391,7 +392,8 @@
                                 </TabItem>
 
                                 <TabItem Header="Evidence">
-                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Disabled">
                                         <StackPanel Margin="8,12,8,12">
                                             <ItemsControl ItemsSource="{Binding SelectedDayEvidence}">
                                                 <ItemsControl.Style>
