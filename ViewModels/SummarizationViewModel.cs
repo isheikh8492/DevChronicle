@@ -15,6 +15,7 @@ public partial class SummarizationViewModel : ObservableObject
     private readonly SummarizationService _summarizationService;
     private readonly DatabaseService _databaseService;
     private readonly SessionContextService _sessionContext;
+    private readonly SettingsService _settingsService;
     private CancellationTokenSource? _cancellationTokenSource;
 
     [ObservableProperty]
@@ -41,10 +42,12 @@ public partial class SummarizationViewModel : ObservableObject
     public SummarizationViewModel(
         SummarizationService summarizationService,
         DatabaseService databaseService,
+        SettingsService settingsService,
         SessionContextService sessionContext)
     {
         _summarizationService = summarizationService;
         _databaseService = databaseService;
+        _settingsService = settingsService;
         _sessionContext = sessionContext;
     }
 
@@ -85,10 +88,11 @@ public partial class SummarizationViewModel : ObservableObject
 
                 Status = $"Summarizing day {day.Date:yyyy-MM-dd} ({processed + 1}/{PendingDays})...";
 
+                var maxBullets = await _settingsService.GetAsync(SettingsService.MaxBulletsPerDayKey, 6);
                 var result = await _summarizationService.SummarizeDayAsync(
                     session.Id,
                     day.Date,
-                    maxBullets: 6,
+                    maxBullets: maxBullets,
                     cancellationToken: _cancellationTokenSource.Token);
 
                 if (result.Success)
@@ -151,10 +155,11 @@ public partial class SummarizationViewModel : ObservableObject
         {
             Status = $"Summarizing day {day.Date:yyyy-MM-dd}...";
 
+            var maxBullets = await _settingsService.GetAsync(SettingsService.MaxBulletsPerDayKey, 6);
             var result = await _summarizationService.SummarizeDayAsync(
                 session.Id,
                 day.Date,
-                maxBullets: 6,
+                maxBullets: maxBullets,
                 cancellationToken: _cancellationTokenSource.Token);
 
             if (result.Success)

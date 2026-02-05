@@ -364,11 +364,12 @@
                                                 </ItemsControl.Style>
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate>
-                                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                                            <TextBlock Text="{Binding}"
-                                                                       TextWrapping="Wrap"
-                                                                       FontSize="13"/>
-                                                        </StackPanel>
+                                                    <Grid Margin="0,0,0,8">
+                                                        <TextBlock Text="{Binding}"
+                                                                   TextWrapping="Wrap"
+                                                                   FontSize="13"
+                                                                   Width="{Binding RelativeSource={RelativeSource AncestorType=ScrollViewer}, Path=ViewportWidth}"/>
+                                                    </Grid>
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>
                                             </ItemsControl>
@@ -424,7 +425,9 @@
                                                                     <ItemsControl.ItemTemplate>
                                                                         <DataTemplate>
                                                                             <TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                                                       Margin="12,4,0,0">
+                                                                                       Margin="12,4,0,0"
+                                                                                       TextWrapping="Wrap"
+                                                                                       Width="{Binding RelativeSource={RelativeSource AncestorType=ScrollViewer}, Path=ViewportWidth}">
                                                                                 <Run Text="{Binding Path, Mode=OneWay}"/>
                                                                                 <Run Text=" (+" />
                                                                                 <Run Text="{Binding Additions, Mode=OneWay}"/>
