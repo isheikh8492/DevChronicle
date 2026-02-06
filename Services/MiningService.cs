@@ -40,7 +40,12 @@ public class MiningService
 
             // Step 1: Fetch from remote
             _logger.LogInfo("Step 1: Fetching from remote...");
-            progress?.Report(new MiningProgress { Status = "Fetching from remote..." });
+            progress?.Report(new MiningProgress
+            {
+                Status = "Fetching from remote...",
+                ProcessedItems = 0,
+                TotalItems = 4
+            });
             var fetchResult = await _gitService.FetchAllAsync(repoPath);
             if (!fetchResult.Success)
             {
@@ -52,7 +57,12 @@ public class MiningService
 
             // Step 2: Get commits from git (single-pass numstat)
             _logger.LogInfo("Step 2: Reading commits from Git (single-pass)...");
-            progress?.Report(new MiningProgress { Status = "Reading commits from Git..." });
+            progress?.Report(new MiningProgress
+            {
+                Status = "Reading commits from Git...",
+                ProcessedItems = 1,
+                TotalItems = 4
+            });
             var includeMergesForMining = options.IncludeMerges || options.TrackIntegrations;
             var knownShas = await _databaseService.GetCommitShasInRangeAsync(sessionId, normalizedStart, normalizedEnd);
             var parsedCommits = await _gitService.GetCommitsWithNumstatAsync(
@@ -110,7 +120,12 @@ public class MiningService
 
             // Step 3: Store commits in database (deduplication handled by INSERT OR IGNORE)
             _logger.LogInfo("Step 3: Storing commits in database...");
-            progress?.Report(new MiningProgress { Status = "Storing commits in database..." });
+            progress?.Report(new MiningProgress
+            {
+                Status = "Storing commits in database...",
+                ProcessedItems = 2,
+                TotalItems = 4
+            });
 
             // Check for cancellation before batch insert
             if (cancellationToken.IsCancellationRequested)
@@ -307,12 +322,19 @@ public class MiningService
 
             progress?.Report(new MiningProgress
             {
-                Status = $"Stored {commits.Count} commits in database"
+                Status = $"Stored {commits.Count} commits in database",
+                ProcessedItems = 2,
+                TotalItems = 4
             });
 
             // Step 4: Aggregate by day
             _logger.LogInfo("Step 4: Aggregating commits by day...");
-            progress?.Report(new MiningProgress { Status = "Aggregating commits by day..." });
+            progress?.Report(new MiningProgress
+            {
+                Status = "Aggregating commits by day...",
+                ProcessedItems = 3,
+                TotalItems = 4
+            });
             var aggregationCommits = options.IncludeMerges
                 ? commits
                 : commits.Where(c => !c.IsMerge).ToList();
@@ -343,7 +365,9 @@ public class MiningService
 
             progress?.Report(new MiningProgress
             {
-                Status = $"Complete! Mined {result.DaysMined} days, {result.StoredCommits} commits."
+                Status = $"Complete! Mined {result.DaysMined} days, {result.StoredCommits} commits.",
+                ProcessedItems = 4,
+                TotalItems = 4
             });
 
             result.Success = true;
@@ -360,7 +384,9 @@ public class MiningService
             // Also report to UI
             progress?.Report(new MiningProgress
             {
-                Status = $"Error: {ex.Message}"
+                Status = $"Error: {ex.Message}",
+                ProcessedItems = 0,
+                TotalItems = 0
             });
         }
 

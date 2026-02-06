@@ -290,6 +290,7 @@
                                          Margin="0,8,0,0"
                                          Maximum="100"
                                          Minimum="0"
+                                         IsIndeterminate="{Binding Mining.IsProgressIndeterminate}"
                                          Value="{Binding Mining.Progress}"
                                          Visibility="{Binding Mining.IsMining, Converter={StaticResource BooleanToVisibilityConverter}}"/>
 

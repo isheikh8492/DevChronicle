@@ -36,6 +36,7 @@ public partial class MiningViewModel : ObservableObject
     private string backfillOrder = "OldestFirst";
 
     public string BackfillOrderLabel => $"Backfill Order: {GetBackfillOrderDisplay(BackfillOrder)}";
+    public bool IsProgressIndeterminate => IsMining && Progress <= 0;
 
     /// <summary>
     /// Event fired when mining completes successfully.
@@ -83,6 +84,8 @@ public partial class MiningViewModel : ObservableObject
             var progressReporter = new Progress<MiningProgress>(p =>
             {
                 Status = p.Status;
+                if (p.TotalItems > 0)
+                    Progress = (double)p.ProcessedItems / p.TotalItems * 100;
             });
 
             var options = await GetSessionOptionsAsync(session);
@@ -201,6 +204,8 @@ public partial class MiningViewModel : ObservableObject
             var progressReporter = new Progress<MiningProgress>(p =>
             {
                 Status = p.Status;
+                if (p.TotalItems > 0)
+                    Progress = (double)p.ProcessedItems / p.TotalItems * 100;
             });
 
             Status = $"Mining {since:yyyy-MM-dd} to {until:yyyy-MM-dd}...";
@@ -292,6 +297,8 @@ public partial class MiningViewModel : ObservableObject
             var progressReporter = new Progress<MiningProgress>(p =>
             {
                 Status = p.Status;
+                if (p.TotalItems > 0)
+                    Progress = (double)p.ProcessedItems / p.TotalItems * 100;
             });
 
             var result = await RunMiningInBackgroundAsync(() => _miningService.MineCommitsAsync(
@@ -400,6 +407,8 @@ public partial class MiningViewModel : ObservableObject
             var progressReporter = new Progress<MiningProgress>(p =>
             {
                 Status = p.Status;
+                if (p.TotalItems > 0)
+                    Progress = (double)p.ProcessedItems / p.TotalItems * 100;
             });
 
             var result = await RunMiningInBackgroundAsync(() => _miningService.MineCommitsAsync(
@@ -749,6 +758,16 @@ public partial class MiningViewModel : ObservableObject
     partial void OnBackfillOrderChanged(string value)
     {
         OnPropertyChanged(nameof(BackfillOrderLabel));
+    }
+
+    partial void OnProgressChanged(double value)
+    {
+        OnPropertyChanged(nameof(IsProgressIndeterminate));
+    }
+
+    partial void OnIsMiningChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsProgressIndeterminate));
     }
 
     private static string GetBackfillOrderDisplay(string order) =>
