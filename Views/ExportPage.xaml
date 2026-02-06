@@ -297,6 +297,24 @@
                         </StackPanel>
                     </StackPanel>
                 </Border>
+
+                <StackPanel Margin="0,8,0,0" Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <TextBlock
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Text="{Binding Status}" />
+                    <TextBlock
+                        FontSize="11"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Text="{Binding ProgressCounterText}" />
+                    <ProgressBar
+                        Height="4"
+                        Margin="0,6,0,0"
+                        IsIndeterminate="{Binding IsProgressIndeterminate}"
+                        Maximum="100"
+                        Minimum="0"
+                        Value="{Binding ProgressPercent}" />
+                </StackPanel>
             </StackPanel>
         </DataTemplate>
 
@@ -493,6 +511,24 @@
                         </StackPanel>
                     </StackPanel>
                 </Border>
+
+                <StackPanel Margin="0,8,0,0" Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <TextBlock
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Text="{Binding Status}" />
+                    <TextBlock
+                        FontSize="11"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Text="{Binding ProgressCounterText}" />
+                    <ProgressBar
+                        Height="4"
+                        Margin="0,6,0,0"
+                        IsIndeterminate="{Binding IsProgressIndeterminate}"
+                        Maximum="100"
+                        Minimum="0"
+                        Value="{Binding ProgressPercent}" />
+                </StackPanel>
             </StackPanel>
         </DataTemplate>
     </Page.Resources>

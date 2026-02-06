@@ -40,14 +40,36 @@ public class ExportService
         var exportedAtUtc = DateTime.UtcNow;
         var timestamp = exportedAtUtc.ToString("yyyyMMdd_HHmmss");
         var result = new ExportResult { Succeeded = true };
+        var shouldWriteDiary = request.ExportDiary && (request.Format == ExportFormat.MarkdownAndJson || request.Format == ExportFormat.MarkdownOnly);
+        var shouldWriteArchive = request.ExportArchive && (request.Format == ExportFormat.MarkdownAndJson || request.Format == ExportFormat.JsonOnly);
+        var totalSteps = 2 + (shouldWriteArchive ? 1 : 0) + (shouldWriteDiary ? 1 : 0) + 1;
+        var currentStep = 0;
 
+        void Report(string status)
+        {
+            currentStep++;
+            request.ProgressReporter?.Report(new ExportProgress
+            {
+                Status = status,
+                CurrentStep = currentStep,
+                TotalSteps = totalSteps
+            });
+        }
+
+        Report("Loading sessions...");
         var sessions = await _databaseService.GetSessionsByIdsAsync(request.SessionIds);
         var sessionsById = sessions.ToDictionary(s => s.Id);
 
         // Load export inputs in bulk (one row per day/summary, potentially many commits).
+        Report("Loading day and summary data...");
         var days = await _databaseService.GetDaysInRangeForSessionsAsync(request.SessionIds, null, null);
         var summaries = await _databaseService.GetLatestDaySummariesInRangeForSessionsAsync(request.SessionIds, null, null);
-        var commits = request.ExportArchive ? await _databaseService.GetCommitsInRangeForSessionsAsync(request.SessionIds, null, null) : new List<Commit>();
+        var commits = new List<Commit>();
+        if (shouldWriteArchive)
+        {
+            Report("Loading commit evidence...");
+            commits = await _databaseService.GetCommitsInRangeForSessionsAsync(request.SessionIds, null, null);
+        }
 
         request.CancellationToken.ThrowIfCancellationRequested();
 
@@ -63,8 +85,9 @@ public class ExportService
 
         try
         {
-            if (request.ExportDiary && (request.Format == ExportFormat.MarkdownAndJson || request.Format == ExportFormat.MarkdownOnly))
+            if (shouldWriteDiary)
             {
+                Report("Writing diary...");
                 await WriteAtomicAsync(
                     diaryPath,
                     stream => WriteDiaryAsync(stream, sessions, days, summaries, exportedAtUtc, hideRepoPaths: request.HideRepoPathsInMarkdown, includePlaceholders: request.IncludePlaceholders, cancellationToken: request.CancellationToken),
@@ -73,8 +96,9 @@ public class ExportService
                 result.FilesWritten.Add(diaryPath);
             }
 
-            if (request.ExportArchive && (request.Format == ExportFormat.MarkdownAndJson || request.Format == ExportFormat.JsonOnly))
+            if (shouldWriteArchive)
             {
+                Report("Writing archive...");
                 await WriteAtomicAsync(
                     archivePath,
                     stream => WriteArchiveAsync(stream, sessions, days, summaries, commits, exportedAtUtc, request.CancellationToken),
@@ -111,6 +135,8 @@ public class ExportService
                 result.Warnings.Add($"Session {id} not found.");
         }
 
+        Report("Export complete.");
+
         return result;
     }
 
@@ -126,10 +152,25 @@ public class ExportService
         }
 
         var exportedAtUtc = DateTime.UtcNow;
+        var totalSteps = 6;
+        var currentStep = 0;
+
+        void Report(string status)
+        {
+            currentStep++;
+            request.ProgressReporter?.Report(new ExportProgress
+            {
+                Status = status,
+                CurrentStep = currentStep,
+                TotalSteps = totalSteps
+            });
+        }
 
         try
         {
+            Report("Reading diary file...");
             var originalText = await File.ReadAllTextAsync(request.DiaryPath, request.CancellationToken);
+            Report("Parsing manifest...");
             var manifest = TryParseManifest(originalText);
             if (manifest == null)
             {
@@ -142,6 +183,7 @@ public class ExportService
 
             request.CancellationToken.ThrowIfCancellationRequested();
 
+            Report("Loading session/day/summary data...");
             var sessionIds = manifest.SessionIds;
             var sessions = await _databaseService.GetSessionsByIdsAsync(sessionIds);
             var days = await _databaseService.GetDaysInRangeForSessionsAsync(sessionIds, null, null);
@@ -149,14 +191,17 @@ public class ExportService
 
             request.CancellationToken.ThrowIfCancellationRequested();
 
+            Report("Computing diary diff...");
             var diff = ComputeDiaryDiff(originalText, manifest, days, summaries);
 
             // Regenerate the entire managed day/entry section deterministically and splice it into the file.
+            Report("Rendering managed diary blocks...");
             var updatedManifest = manifest with { LastSyncedAtUtc = exportedAtUtc };
             var regeneratedBlocks = await RenderDiaryManagedBlocksToStringAsync(sessions, days, summaries, updatedManifest.Options.HideRepoPaths, updatedManifest.Options.IncludePlaceholders, request.CancellationToken);
 
             var updatedText = ReplaceDiaryManagedSectionAndManifest(originalText, updatedManifest.ToManifestLine(), regeneratedBlocks);
 
+            Report("Writing updated diary...");
             await WriteAtomicAsync(
                 request.DiaryPath,
                 async stream =>
@@ -194,9 +239,25 @@ public class ExportService
 
     public async Task<DiaryPreviewResult> PreviewDiaryUpdateAsync(UpdateDiaryRequest request)
     {
+        var totalSteps = 4;
+        var currentStep = 0;
+
+        void Report(string status)
+        {
+            currentStep++;
+            request.ProgressReporter?.Report(new ExportProgress
+            {
+                Status = status,
+                CurrentStep = currentStep,
+                TotalSteps = totalSteps
+            });
+        }
+
         try
         {
+            Report("Reading diary file...");
             var diaryText = await File.ReadAllTextAsync(request.DiaryPath, request.CancellationToken);
+            Report("Parsing manifest...");
             var manifest = TryParseManifest(diaryText);
             if (manifest == null)
             {
@@ -214,9 +275,11 @@ public class ExportService
 
             request.CancellationToken.ThrowIfCancellationRequested();
 
+            Report("Loading day and summary data...");
             var sessionIds = manifest.SessionIds;
             var days = await _databaseService.GetDaysInRangeForSessionsAsync(sessionIds, null, null);
             var summaries = await _databaseService.GetLatestDaySummariesInRangeForSessionsAsync(sessionIds, null, null);
+            Report("Computing diff preview...");
             var diff = ComputeDiaryDiff(diaryText, manifest, days, summaries);
 
             return new DiaryPreviewResult
@@ -251,13 +314,28 @@ public class ExportService
         IReadOnlyList<int> sessionIds,
         bool hideRepoPaths,
         bool includePlaceholders,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IProgress<ExportProgress>? progressReporter = null)
     {
         if (sessionIds.Count == 0)
             throw new InvalidOperationException("No sessions provided for conversion.");
 
         var exportedAtUtc = DateTime.UtcNow;
+        var totalSteps = 4;
+        var currentStep = 0;
 
+        void Report(string status)
+        {
+            currentStep++;
+            progressReporter?.Report(new ExportProgress
+            {
+                Status = status,
+                CurrentStep = currentStep,
+                TotalSteps = totalSteps
+            });
+        }
+
+        Report("Loading session/day/summary data...");
         var sessions = await _databaseService.GetSessionsByIdsAsync(sessionIds);
         var days = await _databaseService.GetDaysInRangeForSessionsAsync(sessionIds, null, null);
         var summaries = await _databaseService.GetLatestDaySummariesInRangeForSessionsAsync(sessionIds, null, null);
@@ -269,9 +347,11 @@ public class ExportService
         if (File.Exists(outputPath))
             outputPath = Path.Combine(inputDir, baseName + ".managed_" + exportedAtUtc.ToString("yyyyMMdd_HHmmss") + ".md");
 
+        Report("Rendering managed diary section...");
         var manifest = DiaryManifest.CreateMulti(sessionIds.ToList(), exportedAtUtc, hideRepoPaths, includePlaceholders);
         var managedBlocks = await RenderDiaryManagedBlocksToStringAsync(sessions, days, summaries, hideRepoPaths, includePlaceholders, cancellationToken);
 
+        Report("Writing converted diary...");
         await WriteAtomicAsync(
             outputPath,
             async stream =>
@@ -295,6 +375,8 @@ public class ExportService
                 await writer.FlushAsync();
             },
             cancellationToken);
+
+        Report("Conversion complete.");
 
         return outputPath;
     }

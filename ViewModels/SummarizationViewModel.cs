@@ -33,6 +33,8 @@ public partial class SummarizationViewModel : ObservableObject
     [ObservableProperty]
     private double progress;
 
+    public bool IsProgressIndeterminate => IsSummarizing && Progress <= 0;
+
     /// <summary>
     /// Event fired when a day is summarized.
     /// Allows coordinators to update day browser status badges.
@@ -64,6 +66,7 @@ public partial class SummarizationViewModel : ObservableObject
         }
 
         IsSummarizing = true;
+        Progress = 0;
         _cancellationTokenSource = new CancellationTokenSource();
 
         try
@@ -79,14 +82,17 @@ public partial class SummarizationViewModel : ObservableObject
             }
 
             PendingDays = pendingDaysList.Count;
+            var totalPending = pendingDaysList.Count;
             var processed = 0;
+            var currentIndex = 0;
 
             foreach (var day in pendingDaysList)
             {
                 if (_cancellationTokenSource.Token.IsCancellationRequested)
                     break;
 
-                Status = $"Summarizing day {day.Date:yyyy-MM-dd} ({processed + 1}/{PendingDays})...";
+                currentIndex++;
+                Status = $"Summarizing day {day.Date:yyyy-MM-dd} ({currentIndex}/{totalPending})...";
 
                 var maxBullets = await _settingsService.GetAsync(SettingsService.MaxBulletsPerDayKey, 6);
                 var result = await _summarizationService.SummarizeDayAsync(
@@ -116,7 +122,7 @@ public partial class SummarizationViewModel : ObservableObject
                 }
             }
 
-            Status = $"Complete! Summarized {processed} days.";
+            Status = $"Complete! Summarized {processed}/{totalPending} days.";
         }
         catch (Exception ex)
         {
@@ -125,6 +131,8 @@ public partial class SummarizationViewModel : ObservableObject
         finally
         {
             IsSummarizing = false;
+            if (Progress >= 100 || PendingDays == 0)
+                Progress = 0;
             _cancellationTokenSource?.Dispose();
             _cancellationTokenSource = null;
         }
@@ -149,6 +157,7 @@ public partial class SummarizationViewModel : ObservableObject
         }
 
         IsSummarizing = true;
+        Progress = 0;
         _cancellationTokenSource = new CancellationTokenSource();
 
         try
@@ -169,6 +178,7 @@ public partial class SummarizationViewModel : ObservableObject
 
                 DaysSummarized++;
                 DaySummarized?.Invoke(this, day.Date);
+                Progress = 100;
                 Status = $"Complete! Summarized {day.Date:yyyy-MM-dd}.";
             }
             else
@@ -183,6 +193,7 @@ public partial class SummarizationViewModel : ObservableObject
         finally
         {
             IsSummarizing = false;
+            Progress = 0;
             _cancellationTokenSource?.Dispose();
             _cancellationTokenSource = null;
             await UpdatePendingCountAsync();
@@ -214,5 +225,15 @@ public partial class SummarizationViewModel : ObservableObject
         {
             // Ignore errors during count update
         }
+    }
+
+    partial void OnProgressChanged(double value)
+    {
+        OnPropertyChanged(nameof(IsProgressIndeterminate));
+    }
+
+    partial void OnIsSummarizingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsProgressIndeterminate));
     }
 }

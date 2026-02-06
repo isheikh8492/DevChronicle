@@ -22,6 +22,7 @@ public class ExportRequest
     public string? ArchiveFileName { get; init; }
     public bool HideRepoPathsInMarkdown { get; init; } = true;
     public bool IncludePlaceholders { get; init; } = true;
+    public IProgress<ExportProgress>? ProgressReporter { get; init; }
     public CancellationToken CancellationToken { get; init; } = CancellationToken.None;
 }
 
@@ -37,7 +38,15 @@ public class ExportResult
 public class UpdateDiaryRequest
 {
     public required string DiaryPath { get; init; }
+    public IProgress<ExportProgress>? ProgressReporter { get; init; }
     public CancellationToken CancellationToken { get; init; } = CancellationToken.None;
+}
+
+public class ExportProgress
+{
+    public string Status { get; init; } = string.Empty;
+    public int CurrentStep { get; init; }
+    public int TotalSteps { get; init; }
 }
 
 public class DiaryDiff

@@ -44,6 +44,18 @@ public partial class ExportViewModel : ObservableObject
     private bool isBusy;
 
     [ObservableProperty]
+    private bool isExporting;
+
+    [ObservableProperty]
+    private int progressCurrentStep;
+
+    [ObservableProperty]
+    private int progressTotalSteps;
+
+    [ObservableProperty]
+    private double progressPercent;
+
+    [ObservableProperty]
     private bool isLoading;
 
     [ObservableProperty]
@@ -88,6 +100,9 @@ public partial class ExportViewModel : ObservableObject
     [ObservableProperty]
     private ObservableCollection<int> boundSessionIds = new();
 
+    public bool IsProgressIndeterminate => IsBusy && ProgressTotalSteps <= 0;
+    public string ProgressCounterText => ProgressTotalSteps > 0 ? $"{ProgressCurrentStep}/{ProgressTotalSteps}" : string.Empty;
+
     public ExportViewModel(
         ExportService exportService,
         DatabaseService databaseService,
@@ -130,6 +145,7 @@ public partial class ExportViewModel : ObservableObject
     partial void OnIsBusyChanged(bool value)
     {
         OnPropertyChanged(nameof(CanConvertToManaged));
+        OnPropertyChanged(nameof(IsProgressIndeterminate));
     }
 
     partial void OnIsDiaryUnmanagedChanged(bool value)
@@ -139,6 +155,17 @@ public partial class ExportViewModel : ObservableObject
 
     partial void OnOutputDirectoryChanged(string value)
     { }
+
+    partial void OnProgressCurrentStepChanged(int value)
+    {
+        OnPropertyChanged(nameof(ProgressCounterText));
+    }
+
+    partial void OnProgressTotalStepsChanged(int value)
+    {
+        OnPropertyChanged(nameof(ProgressCounterText));
+        OnPropertyChanged(nameof(IsProgressIndeterminate));
+    }
 
     [RelayCommand]
     private async Task LoadSessionsAsync()
@@ -274,8 +301,11 @@ public partial class ExportViewModel : ObservableObject
         SelectedFormat = effectiveFormat;
 
         IsBusy = true;
+        IsExporting = true;
+        ResetProgress();
         Status = "Exporting...";
         _cancellationTokenSource = new CancellationTokenSource();
+        var progressReporter = CreateProgressReporter();
 
         try
         {
@@ -293,6 +323,7 @@ public partial class ExportViewModel : ObservableObject
                 DiaryFileName = effectiveDiaryFileName,
                 HideRepoPathsInMarkdown = HideRepoPathsInMarkdown,
                 IncludePlaceholders = IncludePlaceholders,
+                ProgressReporter = progressReporter,
                 CancellationToken = _cancellationTokenSource.Token
             });
 
@@ -323,6 +354,7 @@ public partial class ExportViewModel : ObservableObject
         }
         finally
         {
+            IsExporting = false;
             IsBusy = false;
             _cancellationTokenSource?.Dispose();
             _cancellationTokenSource = null;
@@ -360,14 +392,17 @@ public partial class ExportViewModel : ObservableObject
             return;
 
         IsBusy = true;
+        ResetProgress();
         Status = "Inspecting diary...";
         _cancellationTokenSource = new CancellationTokenSource();
+        var progressReporter = CreateProgressReporter();
 
         try
         {
             var preview = await _exportService.PreviewDiaryUpdateAsync(new UpdateDiaryRequest
             {
                 DiaryPath = DiaryPath,
+                ProgressReporter = progressReporter,
                 CancellationToken = _cancellationTokenSource.Token
             });
 
@@ -420,14 +455,17 @@ public partial class ExportViewModel : ObservableObject
         }
 
         IsBusy = true;
+        ResetProgress();
         Status = "Updating diary...";
         _cancellationTokenSource = new CancellationTokenSource();
+        var progressReporter = CreateProgressReporter();
 
         try
         {
             var (diff, result) = await _exportService.UpdateDiaryAsync(new UpdateDiaryRequest
             {
                 DiaryPath = DiaryPath,
+                ProgressReporter = progressReporter,
                 CancellationToken = _cancellationTokenSource.Token
             });
 
@@ -482,8 +520,10 @@ public partial class ExportViewModel : ObservableObject
         }
 
         IsBusy = true;
+        ResetProgress();
         Status = "Converting to managed diary...";
         _cancellationTokenSource = new CancellationTokenSource();
+        var progressReporter = CreateProgressReporter();
 
         try
         {
@@ -492,7 +532,8 @@ public partial class ExportViewModel : ObservableObject
                 sessionIds: selectedIds,
                 hideRepoPaths: HideRepoPathsInMarkdown,
                 includePlaceholders: IncludePlaceholders,
-                cancellationToken: _cancellationTokenSource.Token);
+                cancellationToken: _cancellationTokenSource.Token,
+                progressReporter: progressReporter);
 
             DiaryPath = output;
             Status = "Converted. Inspecting...";
@@ -604,8 +645,11 @@ public partial class ExportViewModel : ObservableObject
         }
 
         IsBusy = true;
+        IsExporting = true;
+        ResetProgress();
         Status = $"Exporting session {session.Id}...";
         _cancellationTokenSource = new CancellationTokenSource();
+        var progressReporter = CreateProgressReporter();
 
         try
         {
@@ -628,6 +672,7 @@ public partial class ExportViewModel : ObservableObject
                 ArchiveFileName = exportArchive ? Path.GetFileName(archivePath) : null,
                 HideRepoPathsInMarkdown = HideRepoPathsInMarkdown,
                 IncludePlaceholders = IncludePlaceholders,
+                ProgressReporter = progressReporter,
                 CancellationToken = _cancellationTokenSource.Token
             });
 
@@ -658,6 +703,7 @@ public partial class ExportViewModel : ObservableObject
         }
         finally
         {
+            IsExporting = false;
             IsBusy = false;
             _cancellationTokenSource?.Dispose();
             _cancellationTokenSource = null;
@@ -701,6 +747,28 @@ public partial class ExportViewModel : ObservableObject
             candidate = candidate.Replace(invalid, '_');
 
         return candidate;
+    }
+
+    private void ResetProgress()
+    {
+        ProgressCurrentStep = 0;
+        ProgressTotalSteps = 0;
+        ProgressPercent = 0;
+    }
+
+    private IProgress<ExportProgress> CreateProgressReporter()
+    {
+        return new Progress<ExportProgress>(p =>
+        {
+            if (!string.IsNullOrWhiteSpace(p.Status))
+                Status = p.Status;
+
+            ProgressCurrentStep = Math.Max(0, p.CurrentStep);
+            ProgressTotalSteps = Math.Max(0, p.TotalSteps);
+            ProgressPercent = ProgressTotalSteps > 0
+                ? Math.Clamp((double)ProgressCurrentStep / ProgressTotalSteps * 100, 0, 100)
+                : 0;
+        });
     }
 }
 
