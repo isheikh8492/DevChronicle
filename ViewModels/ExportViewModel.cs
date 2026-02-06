@@ -33,7 +33,6 @@ public partial class ExportViewModel : ObservableObject
     public bool HasDiffPreview => CurrentDiff != null;
     public int SelectedSessionCount => Sessions.Count(s => s.IsSelected);
     public bool CanConvertToManaged => IsDiaryUnmanaged && SelectedSessionCount > 0 && !IsBusy;
-    public string OutputDirectoryDisplay => string.IsNullOrWhiteSpace(OutputDirectory) ? "(not set)" : OutputDirectory;
 
     [ObservableProperty]
     private ExportMode mode = ExportMode.Hub;
@@ -139,9 +138,7 @@ public partial class ExportViewModel : ObservableObject
     }
 
     partial void OnOutputDirectoryChanged(string value)
-    {
-        OnPropertyChanged(nameof(OutputDirectoryDisplay));
-    }
+    { }
 
     [RelayCommand]
     private async Task LoadSessionsAsync()
@@ -546,22 +543,65 @@ public partial class ExportViewModel : ObservableObject
 
     private async Task ExportSingleSessionAsync(ExportSessionItemViewModel session, bool exportDiary, bool exportArchive)
     {
-        if (string.IsNullOrWhiteSpace(OutputDirectory) || !Directory.Exists(OutputDirectory))
-        {
-            await ChooseOutputDirectoryAsync();
-            if (string.IsNullOrWhiteSpace(OutputDirectory) || !Directory.Exists(OutputDirectory))
-            {
-                Status = "Choose an output directory first.";
-                return;
-            }
-        }
-
-        var perSessionDir = Path.Combine(OutputDirectory, "PerSession");
-        Directory.CreateDirectory(perSessionDir);
-
         var dateStamp = DateTime.Now.ToString("yyyy-MM-dd");
         var diaryFileName = $"Diary.Session_{session.Id}.{dateStamp}.md";
         var archiveFileName = $"Archive.Session_{session.Id}.{dateStamp}.json";
+        var docsDir = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+
+        string? diaryPath = null;
+        string? archivePath = null;
+
+        if (exportDiary)
+        {
+            var diaryDialog = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = "Save session diary as",
+                Filter = "Markdown files (*.md)|*.md|All files (*.*)|*.*",
+                FileName = diaryFileName,
+                InitialDirectory = docsDir,
+                CheckPathExists = true,
+                ValidateNames = true
+            };
+
+            if (diaryDialog.ShowDialog() != true)
+            {
+                Status = "Canceled.";
+                return;
+            }
+
+            diaryPath = diaryDialog.FileName;
+        }
+
+        if (exportArchive)
+        {
+            var archiveDialog = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = "Save session archive as",
+                Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*",
+                FileName = archiveFileName,
+                InitialDirectory = docsDir,
+                CheckPathExists = true,
+                ValidateNames = true
+            };
+
+            if (archiveDialog.ShowDialog() != true)
+            {
+                Status = "Canceled.";
+                return;
+            }
+
+            archivePath = archiveDialog.FileName;
+        }
+
+        var exportDirectory = diaryPath != null
+            ? Path.GetDirectoryName(diaryPath)
+            : Path.GetDirectoryName(archivePath!);
+
+        if (string.IsNullOrWhiteSpace(exportDirectory))
+        {
+            Status = "Invalid export destination.";
+            return;
+        }
 
         IsBusy = true;
         Status = $"Exporting session {session.Id}...";
@@ -583,9 +623,9 @@ public partial class ExportViewModel : ObservableObject
                 ExportDiary = exportDiary,
                 ExportArchive = exportArchive,
                 Format = effectiveFormat,
-                OutputDirectory = perSessionDir,
-                DiaryFileName = exportDiary ? diaryFileName : null,
-                ArchiveFileName = exportArchive ? archiveFileName : null,
+                OutputDirectory = exportDirectory,
+                DiaryFileName = exportDiary ? Path.GetFileName(diaryPath) : null,
+                ArchiveFileName = exportArchive ? Path.GetFileName(archivePath) : null,
                 HideRepoPathsInMarkdown = HideRepoPathsInMarkdown,
                 IncludePlaceholders = IncludePlaceholders,
                 CancellationToken = _cancellationTokenSource.Token

@@ -35,34 +35,6 @@
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                 Text="Select sessions for new exports, or update an existing managed diary." />
-                            <Grid Margin="0,12,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock
-                                    Grid.Column="0"
-                                    VerticalAlignment="Center"
-                                    FontSize="12"
-                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                    Text="Quick export destination:" />
-                                <TextBlock
-                                    Grid.Column="1"
-                                    Margin="8,0,8,0"
-                                    VerticalAlignment="Center"
-                                    FontSize="12"
-                                    Text="{Binding OutputDirectoryDisplay}"
-                                    TextTrimming="CharacterEllipsis"
-                                    ToolTip="{Binding OutputDirectoryDisplay}" />
-                                <ui:Button
-                                    Grid.Column="2"
-                                    Padding="8,4"
-                                    Appearance="Secondary"
-                                    Command="{Binding ChooseOutputDirectoryCommand}"
-                                    Content="Change..."
-                                    IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}" />
-                            </Grid>
                         </StackPanel>
 
                         <ui:Button
@@ -169,10 +141,6 @@
                                                     ToolTip="Session export actions">
                                                     <ui:Button.ContextMenu>
                                                         <ContextMenu>
-                                                            <MenuItem
-                                                                Header="{Binding PlacementTarget.Tag.OutputDirectoryDisplay, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                                IsEnabled="False" />
-                                                            <Separator />
                                                             <MenuItem
                                                                 Command="{Binding PlacementTarget.Tag.ExportSingleDiaryCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                                                 CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
