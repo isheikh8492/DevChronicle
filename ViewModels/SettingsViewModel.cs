@@ -1,4 +1,6 @@
 using System.Threading.Tasks;
+using System;
+using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DevChronicle.Services;
@@ -42,6 +44,9 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private string masterPromptText = string.Empty;
 
+    [ObservableProperty]
+    private string defaultExportDirectory = string.Empty;
+
     private string _actualApiKey = string.Empty;
 
     public SettingsViewModel(SettingsService settingsService)
@@ -61,6 +66,8 @@ public partial class SettingsViewModel : ObservableObject
         BackfillOrder = await _settingsService.GetAsync(SettingsService.MiningBackfillOrderKey, "OldestFirst");
         _actualApiKey = await _settingsService.GetAsync(SettingsService.OpenAiApiKeyKey, string.Empty);
         MasterPromptText = await _settingsService.GetAsync(SettingsService.SummarizationMasterPromptKey, string.Empty);
+        var fallbackExportDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "DevChronicleExports");
+        DefaultExportDirectory = await _settingsService.GetAsync(SettingsService.ExportDefaultDirectoryKey, fallbackExportDir);
         UpdateDisplayedApiKey();
     }
 
@@ -103,6 +110,7 @@ public partial class SettingsViewModel : ObservableObject
     partial void OnOverlapDaysChanged(int value) => _ = _settingsService.SetAsync(SettingsService.MiningOverlapDaysKey, value);
     partial void OnFillGapsFirstChanged(bool value) => _ = _settingsService.SetAsync(SettingsService.MiningFillGapsFirstKey, value);
     partial void OnBackfillOrderChanged(string value) => _ = _settingsService.SetAsync(SettingsService.MiningBackfillOrderKey, value);
+    partial void OnDefaultExportDirectoryChanged(string value) => _ = _settingsService.SetAsync(SettingsService.ExportDefaultDirectoryKey, value ?? string.Empty);
 
     public async Task SaveApiKeyAsync(string newApiKey)
     {

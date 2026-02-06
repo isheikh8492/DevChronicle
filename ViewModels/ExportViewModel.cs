@@ -25,6 +25,7 @@ public partial class ExportViewModel : ObservableObject
 {
     private readonly ExportService _exportService;
     private readonly DatabaseService _databaseService;
+    private readonly SettingsService _settingsService;
     private bool _isUpdatingSelectAll;
     private CancellationTokenSource? _cancellationTokenSource;
 
@@ -32,6 +33,7 @@ public partial class ExportViewModel : ObservableObject
     public bool HasDiffPreview => CurrentDiff != null;
     public int SelectedSessionCount => Sessions.Count(s => s.IsSelected);
     public bool CanConvertToManaged => IsDiaryUnmanaged && SelectedSessionCount > 0 && !IsBusy;
+    public string OutputDirectoryDisplay => string.IsNullOrWhiteSpace(OutputDirectory) ? "(not set)" : OutputDirectory;
 
     [ObservableProperty]
     private ExportMode mode = ExportMode.Hub;
@@ -70,6 +72,9 @@ public partial class ExportViewModel : ObservableObject
     private bool includePlaceholders = true;
 
     [ObservableProperty]
+    private string diaryFileName = string.Empty;
+
+    [ObservableProperty]
     private string? diaryPath;
 
     [ObservableProperty]
@@ -86,10 +91,12 @@ public partial class ExportViewModel : ObservableObject
 
     public ExportViewModel(
         ExportService exportService,
-        DatabaseService databaseService)
+        DatabaseService databaseService,
+        SettingsService settingsService)
     {
         _exportService = exportService;
         _databaseService = databaseService;
+        _settingsService = settingsService;
 
         _ = LoadSessionsAsync();
         _ = LoadExportSettingsAsync();
@@ -129,6 +136,11 @@ public partial class ExportViewModel : ObservableObject
     partial void OnIsDiaryUnmanagedChanged(bool value)
     {
         OnPropertyChanged(nameof(CanConvertToManaged));
+    }
+
+    partial void OnOutputDirectoryChanged(string value)
+    {
+        OnPropertyChanged(nameof(OutputDirectoryDisplay));
     }
 
     [RelayCommand]
@@ -270,6 +282,10 @@ public partial class ExportViewModel : ObservableObject
 
         try
         {
+            var effectiveDiaryFileName = ExportDiary
+                ? BuildSafeDiaryFileName(DiaryFileName)
+                : null;
+
             var result = await _exportService.ExportAsync(new ExportRequest
             {
                 SessionIds = selectedIds,
@@ -277,6 +293,7 @@ public partial class ExportViewModel : ObservableObject
                 ExportArchive = ExportArchive,
                 Format = SelectedFormat,
                 OutputDirectory = OutputDirectory,
+                DiaryFileName = effectiveDiaryFileName,
                 HideRepoPathsInMarkdown = HideRepoPathsInMarkdown,
                 IncludePlaceholders = IncludePlaceholders,
                 CancellationToken = _cancellationTokenSource.Token
@@ -529,10 +546,14 @@ public partial class ExportViewModel : ObservableObject
 
     private async Task ExportSingleSessionAsync(ExportSessionItemViewModel session, bool exportDiary, bool exportArchive)
     {
-        if (string.IsNullOrWhiteSpace(OutputDirectory))
+        if (string.IsNullOrWhiteSpace(OutputDirectory) || !Directory.Exists(OutputDirectory))
         {
-            Status = "Choose an output directory first.";
-            return;
+            await ChooseOutputDirectoryAsync();
+            if (string.IsNullOrWhiteSpace(OutputDirectory) || !Directory.Exists(OutputDirectory))
+            {
+                Status = "Choose an output directory first.";
+                return;
+            }
         }
 
         var perSessionDir = Path.Combine(OutputDirectory, "PerSession");
@@ -611,16 +632,35 @@ public partial class ExportViewModel : ObservableObject
             if (!string.IsNullOrWhiteSpace(lastDir))
             {
                 OutputDirectory = lastDir;
+                DiaryFileName = BuildSafeDiaryFileName(string.Empty);
                 return;
             }
 
             var docs = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-            OutputDirectory = Path.Combine(docs, "DevChronicleExports");
+            var fallback = Path.Combine(docs, "DevChronicleExports");
+            var defaultDir = await _settingsService.GetAsync(SettingsService.ExportDefaultDirectoryKey, fallback);
+            OutputDirectory = string.IsNullOrWhiteSpace(defaultDir) ? fallback : defaultDir;
+            DiaryFileName = BuildSafeDiaryFileName(string.Empty);
         }
         catch
         {
             // ignore settings load failures
         }
+    }
+
+    private static string BuildSafeDiaryFileName(string input)
+    {
+        var candidate = string.IsNullOrWhiteSpace(input)
+            ? $"DevDiary_{DateTime.Now:yyyyMMdd_HHmmss}.md"
+            : input.Trim();
+
+        if (!candidate.EndsWith(".md", StringComparison.OrdinalIgnoreCase))
+            candidate += ".md";
+
+        foreach (var invalid in Path.GetInvalidFileNameChars())
+            candidate = candidate.Replace(invalid, '_');
+
+        return candidate;
     }
 }
 

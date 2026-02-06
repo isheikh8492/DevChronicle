@@ -62,6 +62,34 @@
             <ui:Card Margin="0,0,0,16">
                 <StackPanel Margin="20">
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                        <ui:SymbolIcon Symbol="Folder24" FontSize="20" Margin="0,0,12,0"/>
+                        <TextBlock FontSize="16" FontWeight="Medium" Text="Export Defaults" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <TextBlock
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Text="Default output folder used by quick exports and as the initial export destination."
+                        Margin="0,0,0,12"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <ui:TextBox x:Name="ExportDefaultDirectoryBox"
+                                    Grid.Column="0"
+                                    Text="{Binding DefaultExportDirectory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                    Margin="0,0,8,0"/>
+                        <ui:Button Grid.Column="1"
+                                   Content="Browse"
+                                   Icon="{ui:SymbolIcon Folder24}"
+                                   Click="BrowseExportDirectory_Click"/>
+                    </Grid>
+                </StackPanel>
+            </ui:Card>
+
+            <ui:Card Margin="0,0,0,16">
+                <StackPanel Margin="20">
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
                         <ui:SymbolIcon Symbol="TextT24" FontSize="20" Margin="0,0,12,0"/>
                         <TextBlock FontSize="16" FontWeight="Medium" Text="Summarization Master Prompt" VerticalAlignment="Center"/>
                     </StackPanel>

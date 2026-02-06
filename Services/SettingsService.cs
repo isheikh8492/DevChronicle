@@ -14,6 +14,7 @@ public class SettingsService
     public const string MaxBulletsPerDayKey = "summarization.max_bullets_per_day";
     public const string SummarizationMasterPromptKey = "summarization.master_prompt";
     public const string OpenAiApiKeyKey = "openai.api_key";
+    public const string ExportDefaultDirectoryKey = "export.default_directory";
 
     private readonly DatabaseService _databaseService;
 

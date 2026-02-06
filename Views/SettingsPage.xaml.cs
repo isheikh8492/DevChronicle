@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using DevChronicle.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
+using WinForms = System.Windows.Forms;
 
 namespace DevChronicle.Views
 {
@@ -52,6 +53,21 @@ namespace DevChronicle.Views
         {
             await ViewModel.SaveMasterPromptAsync();
             System.Windows.MessageBox.Show("Master prompt saved.", "Settings", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        private void BrowseExportDirectory_Click(object sender, RoutedEventArgs e)
+        {
+            using var dialog = new WinForms.FolderBrowserDialog
+            {
+                Description = "Select default export output folder",
+                UseDescriptionForTitle = true,
+                ShowNewFolderButton = true
+            };
+
+            if (dialog.ShowDialog() != WinForms.DialogResult.OK)
+                return;
+
+            ViewModel.DefaultExportDirectory = dialog.SelectedPath;
         }
     }
 }
