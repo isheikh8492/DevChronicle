@@ -43,7 +43,7 @@
                             Appearance="Primary"
                             Command="{Binding GoToNewTargetCommand}"
                             Content="Create New Export..."
-                            IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}" />
+                            IsEnabled="{Binding CanCreateNewExport}" />
 
                         <ui:Button
                             Grid.Column="3"

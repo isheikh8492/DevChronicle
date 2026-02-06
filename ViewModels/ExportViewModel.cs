@@ -33,6 +33,7 @@ public partial class ExportViewModel : ObservableObject
     public bool HasDiaryPath => !string.IsNullOrWhiteSpace(DiaryPath);
     public bool HasDiffPreview => CurrentDiff != null;
     public int SelectedSessionCount => Sessions.Count(s => s.IsSelected);
+    public bool CanCreateNewExport => SelectedSessionCount > 0 && !IsBusy;
     public bool CanConvertToManaged => IsDiaryUnmanaged && SelectedSessionCount > 0 && !IsBusy;
 
     [ObservableProperty]
@@ -139,6 +140,7 @@ public partial class ExportViewModel : ObservableObject
         _isUpdatingSelectAll = false;
 
         OnPropertyChanged(nameof(SelectedSessionCount));
+        OnPropertyChanged(nameof(CanCreateNewExport));
         OnPropertyChanged(nameof(CanConvertToManaged));
     }
 
@@ -154,6 +156,7 @@ public partial class ExportViewModel : ObservableObject
 
     partial void OnIsBusyChanged(bool value)
     {
+        OnPropertyChanged(nameof(CanCreateNewExport));
         OnPropertyChanged(nameof(CanConvertToManaged));
         OnPropertyChanged(nameof(IsProgressIndeterminate));
         OnPropertyChanged(nameof(ShowStatusPanel));
@@ -240,6 +243,7 @@ public partial class ExportViewModel : ObservableObject
         }
 
         OnPropertyChanged(nameof(SelectedSessionCount));
+        OnPropertyChanged(nameof(CanCreateNewExport));
         OnPropertyChanged(nameof(CanConvertToManaged));
     }
 
