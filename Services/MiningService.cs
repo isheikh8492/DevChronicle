@@ -27,10 +27,21 @@ public class MiningService
         CancellationToken cancellationToken = default)
     {
         var result = new MiningResult();
+        const int totalUnits = 100;
         var rangeLabel = since.HasValue && until.HasValue
             ? $"{since.Value:yyyy-MM-dd} to {until.Value:yyyy-MM-dd}"
             : "ALL HISTORY";
         _logger.LogInfo($"Mining started for session {sessionId}, repo: {repoPath}, range: {rangeLabel}, scope: {options.RefScope}, includeMerges: {options.IncludeMerges}, trackIntegrations: {options.TrackIntegrations}");
+
+        void Report(int processed, string status)
+        {
+            progress?.Report(new MiningProgress
+            {
+                Status = status,
+                ProcessedItems = Math.Clamp(processed, 0, totalUnits),
+                TotalItems = totalUnits
+            });
+        }
 
         try
         {
@@ -40,12 +51,7 @@ public class MiningService
 
             // Step 1: Fetch from remote
             _logger.LogInfo("Step 1: Fetching from remote...");
-            progress?.Report(new MiningProgress
-            {
-                Status = "Fetching from remote...",
-                ProcessedItems = 0,
-                TotalItems = 4
-            });
+            Report(2, "Phase 1/4: Fetching from remote...");
             var fetchResult = await _gitService.FetchAllAsync(repoPath);
             if (!fetchResult.Success)
             {
@@ -54,15 +60,11 @@ public class MiningService
                 return result;
             }
             _logger.LogInfo("Git fetch completed successfully");
+            Report(10, "Phase 1/4 complete.");
 
             // Step 2: Get commits from git (single-pass numstat)
             _logger.LogInfo("Step 2: Reading commits from Git (single-pass)...");
-            progress?.Report(new MiningProgress
-            {
-                Status = "Reading commits from Git...",
-                ProcessedItems = 1,
-                TotalItems = 4
-            });
+            Report(12, "Phase 2/4: Reading commits from Git...");
             var includeMergesForMining = options.IncludeMerges || options.TrackIntegrations;
             var knownShas = await _databaseService.GetCommitShasInRangeAsync(sessionId, normalizedStart, normalizedEnd);
             var parsedCommits = await _gitService.GetCommitsWithNumstatAsync(
@@ -117,15 +119,11 @@ public class MiningService
 
             result.TotalCommits = commits.Count;
             _logger.LogInfo($"Found {commits.Count} commits");
+            Report(35, $"Phase 2/4 complete. Found {commits.Count} commits.");
 
             // Step 3: Store commits in database (deduplication handled by INSERT OR IGNORE)
             _logger.LogInfo("Step 3: Storing commits in database...");
-            progress?.Report(new MiningProgress
-            {
-                Status = "Storing commits in database...",
-                ProcessedItems = 2,
-                TotalItems = 4
-            });
+            Report(40, $"Phase 3/4: Storing {commits.Count} commits...");
 
             // Check for cancellation before batch insert
             if (cancellationToken.IsCancellationRequested)
@@ -140,6 +138,7 @@ public class MiningService
             var storedCommits = await _databaseService.BatchInsertCommitsAsync(commits);
             result.StoredCommits = storedCommits;
             _logger.LogInfo($"Stored {storedCommits} new commits (parsed {commits.Count})");
+            Report(55, $"Phase 3/4: Stored {storedCommits} new commits.");
 
             if (parentRows.Count > 0)
             {
@@ -213,6 +212,7 @@ public class MiningService
             {
                 _logger.LogInfo($"Persisting {labels.Count} commit branch labels");
                 await _databaseService.BatchInsertCommitBranchLabelsAsync(labels);
+                Report(62, $"Phase 3/4: Saved {labels.Count} branch labels.");
             }
 
             if (options.TrackIntegrations)
@@ -225,8 +225,9 @@ public class MiningService
                 var integrationEvents = new List<IntegrationEvent>();
                 var integrationEventCommits = new List<IntegrationEventCommit>();
 
-                foreach (var merge in mergeCommits)
+                for (var mergeIndex = 0; mergeIndex < mergeCommits.Count; mergeIndex++)
                 {
+                    var merge = mergeCommits[mergeIndex];
                     var parent1 = merge.Parents[0];
                     var parent2 = merge.Parents[1];
                     var integratedShas = await _gitService.GetIntegratedCommitsAsync(repoPath, parent1, parent2);
@@ -256,6 +257,12 @@ public class MiningService
                             Sha = sha
                         });
                     }
+
+                    if (mergeCommits.Count > 0)
+                    {
+                        var processed = 62 + (int)Math.Round(((mergeIndex + 1d) / mergeCommits.Count) * 8d);
+                        Report(processed, $"Phase 3/4: Integration scan {mergeIndex + 1}/{mergeCommits.Count}...");
+                    }
                 }
 
                 if (integrationEvents.Count > 0)
@@ -271,13 +278,20 @@ public class MiningService
 
             var patchUpdates = new List<(string Sha, string PatchId)>();
             var missingPatchId = commits.Where(c => string.IsNullOrWhiteSpace(c.PatchId)).ToList();
-            foreach (var commit in missingPatchId)
+            for (var patchIndex = 0; patchIndex < missingPatchId.Count; patchIndex++)
             {
+                var commit = missingPatchId[patchIndex];
                 var patchId = await _gitService.GetPatchIdAsync(repoPath, commit.Sha);
                 if (!string.IsNullOrWhiteSpace(patchId))
                 {
                     commit.PatchId = patchId;
                     patchUpdates.Add((commit.Sha, patchId));
+                }
+
+                if (missingPatchId.Count > 0)
+                {
+                    var processed = 70 + (int)Math.Round(((patchIndex + 1d) / missingPatchId.Count) * 10d);
+                    Report(processed, $"Phase 3/4: Resolving patch ids {patchIndex + 1}/{missingPatchId.Count}...");
                 }
             }
 
@@ -322,19 +336,14 @@ public class MiningService
 
             progress?.Report(new MiningProgress
             {
-                Status = $"Stored {commits.Count} commits in database",
-                ProcessedItems = 2,
-                TotalItems = 4
+                Status = $"Phase 3/4 complete. Stored {commits.Count} commits in database.",
+                ProcessedItems = 80,
+                TotalItems = totalUnits
             });
 
             // Step 4: Aggregate by day
             _logger.LogInfo("Step 4: Aggregating commits by day...");
-            progress?.Report(new MiningProgress
-            {
-                Status = "Aggregating commits by day...",
-                ProcessedItems = 3,
-                TotalItems = 4
-            });
+            Report(82, "Phase 4/4: Aggregating commits by day...");
             var aggregationCommits = options.IncludeMerges
                 ? commits
                 : commits.Where(c => !c.IsMerge).ToList();
@@ -344,8 +353,10 @@ public class MiningService
                 .OrderBy(g => g.Key);
 
             var daysToUpsert = new List<Models.Day>();
-            foreach (var dayGroup in dayGroups)
+            var orderedDayGroups = dayGroups.ToList();
+            for (var dayIndex = 0; dayIndex < orderedDayGroups.Count; dayIndex++)
             {
+                var dayGroup = orderedDayGroups[dayIndex];
                 daysToUpsert.Add(new Models.Day
                 {
                     SessionId = sessionId,
@@ -355,6 +366,12 @@ public class MiningService
                     Deletions = dayGroup.Sum(c => c.Deletions),
                     Status = DayStatus.Mined
                 });
+
+                if (orderedDayGroups.Count > 0)
+                {
+                    var processed = 82 + (int)Math.Round(((dayIndex + 1d) / orderedDayGroups.Count) * 14d);
+                    Report(processed, $"Phase 4/4: Aggregating day {dayIndex + 1}/{orderedDayGroups.Count}...");
+                }
             }
 
             // Batch upsert all days in ONE transaction
@@ -363,12 +380,7 @@ public class MiningService
             result.DaysMined = daysToUpsert.Count;
             _logger.LogInfo($"Successfully upserted {daysToUpsert.Count} days");
 
-            progress?.Report(new MiningProgress
-            {
-                Status = $"Complete! Mined {result.DaysMined} days, {result.StoredCommits} commits.",
-                ProcessedItems = 4,
-                TotalItems = 4
-            });
+            Report(100, $"Complete! Mined {result.DaysMined} days, {result.StoredCommits} commits.");
 
             result.Success = true;
             _logger.LogInfo($"Mining completed successfully: {result.DaysMined} days, {result.StoredCommits} commits");

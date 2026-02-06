@@ -527,7 +527,7 @@ public class ExportService
 
                 var summaryCreatedAt = hasSummary ? summary!.CreatedAt.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ") : "none";
                 await writer.WriteLineAsync($"<!-- DC:ENTRY day={dayKey} session={s.SessionId} summaryCreatedAt={summaryCreatedAt} -->");
-                await writer.WriteLineAsync($"### {s.RepoName} ({s.SessionName})");
+                await writer.WriteLineAsync($"### {s.RepoName}");
 
                 if (hasSummary && !string.IsNullOrWhiteSpace(summary!.BulletsText))
                 {
