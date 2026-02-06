@@ -1,6 +1,7 @@
 ﻿using System.Windows;
 using DevChronicle.Services;
 using DevChronicle.ViewModels;
+using DevChronicle.Views;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace DevChronicle

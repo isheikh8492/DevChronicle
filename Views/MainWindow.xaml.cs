@@ -6,7 +6,7 @@ using Wpf.Ui.Appearance;
 using Wpf.Ui.Controls;
 using DevChronicle.Views;
 
-namespace DevChronicle
+namespace DevChronicle.Views
 {
     /// <summary>
     /// Interaction logic for MainWindow.xaml

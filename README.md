@@ -81,6 +81,31 @@ If the app is running and locks `DevChronicle.exe`, use an alternate output fold
 dotnet test Tests/DevChronicle.Tests/DevChronicle.Tests.csproj -p:OutDir=artifacts\tmpbuild\
 ```
 
+## CI/CD
+
+CI runs on GitHub Actions:
+
+- `.github/workflows/ci.yml`: restore, build, test on `main` pushes and PRs
+
+CD for MSIX:
+
+- `.github/workflows/release-msix.yml`: builds and packages an MSIX on tag pushes `vX.Y.Z`
+- Uses a **self-signed** certificate in CI (good for internal testing)
+- Output: `DevChronicle.msix` artifact
+
+To trigger a release:
+
+```powershell
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+## MSIX notes
+
+- Signed MSIX avoids install warnings. Self-signed is fine for internal use.
+- For public distribution, replace the self-signed cert with a real code-signing certificate.
+- The manifest template lives at `build/msix/AppxManifest.xml`.
+
 ## Tech stack
 
 - `.NET 8` + `WPF`

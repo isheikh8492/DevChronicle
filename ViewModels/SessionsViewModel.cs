@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DevChronicle.Models;
 using DevChronicle.Services;
+using DevChronicle.Views;
 using DevChronicle.Views.Windows;
 
 namespace DevChronicle.ViewModels;
@@ -130,7 +131,7 @@ public partial class SessionsViewModel : ObservableObject
         if (session == null) return;
 
         // Navigate to SessionDetailPage with session ID
-        if (System.Windows.Application.Current.MainWindow is MainWindow mainWindow)
+        if (System.Windows.Application.Current.MainWindow is DevChronicle.Views.MainWindow mainWindow)
         {
             mainWindow.NavigateToSessionDetail(session.Id);
         }
