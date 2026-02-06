@@ -11,7 +11,7 @@ public class BranchEvidenceViewModel
         Commits = new ObservableCollection<BranchCommitViewModel>(commits);
     }
 
-    public string BranchName { get; }
+    public string BranchName { get; set; }
     public ObservableCollection<BranchCommitViewModel> Commits { get; }
     public int CommitCount => Commits.Count;
 }

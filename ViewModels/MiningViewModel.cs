@@ -294,7 +294,7 @@ public partial class MiningViewModel : ObservableObject
                 Status = p.Status;
             });
 
-            var result = await _miningService.MineCommitsAsync(
+            var result = await RunMiningInBackgroundAsync(() => _miningService.MineCommitsAsync(
                 session.Id,
                 session.RepoPath,
                 rangeStart,
@@ -302,7 +302,7 @@ public partial class MiningViewModel : ObservableObject
                 options,
                 authorFilters,
                 progressReporter,
-                _cancellationTokenSource.Token);
+                _cancellationTokenSource.Token));
 
             DaysMined = result.DaysMined;
             CommitsFound = result.TotalCommits;
@@ -402,7 +402,7 @@ public partial class MiningViewModel : ObservableObject
                 Status = p.Status;
             });
 
-            var result = await _miningService.MineCommitsAsync(
+            var result = await RunMiningInBackgroundAsync(() => _miningService.MineCommitsAsync(
                 session.Id,
                 session.RepoPath,
                 rangeStart,
@@ -410,7 +410,7 @@ public partial class MiningViewModel : ObservableObject
                 options,
                 authorFilters,
                 progressReporter,
-                _cancellationTokenSource.Token);
+                _cancellationTokenSource.Token));
 
             var downgraded = 0;
             if (result.Success)
@@ -607,7 +607,7 @@ public partial class MiningViewModel : ObservableObject
             {
                 var (gapStart, gapEnd) = gapWindow.Value;
                 Status = $"Mining gap {gapStart:yyyy-MM-dd} to {gapEnd:yyyy-MM-dd}...";
-                return await _miningService.MineCommitsAsync(
+                return await RunMiningInBackgroundAsync(() => _miningService.MineCommitsAsync(
                     session.Id,
                     session.RepoPath,
                     gapStart,
@@ -615,7 +615,7 @@ public partial class MiningViewModel : ObservableObject
                     options,
                     authorFilters,
                     progressReporter,
-                    cancellationToken);
+                    cancellationToken));
             }
         }
 
@@ -624,7 +624,7 @@ public partial class MiningViewModel : ObservableObject
 
         if (totalDays <= windowDays)
         {
-            return await _miningService.MineCommitsAsync(
+            return await RunMiningInBackgroundAsync(() => _miningService.MineCommitsAsync(
                 session.Id,
                 session.RepoPath,
                 since,
@@ -632,7 +632,7 @@ public partial class MiningViewModel : ObservableObject
                 options,
                 authorFilters,
                 progressReporter,
-                cancellationToken);
+                cancellationToken));
         }
 
         var totalWindows = (int)Math.Ceiling(totalDays / (double)windowDays);
@@ -657,7 +657,7 @@ public partial class MiningViewModel : ObservableObject
 
             Status = $"Mining {windowStart:yyyy-MM-dd} to {windowEnd:yyyy-MM-dd} ({windowIndex}/{totalWindows})...";
 
-            var result = await _miningService.MineCommitsAsync(
+            var result = await RunMiningInBackgroundAsync(() => _miningService.MineCommitsAsync(
                 session.Id,
                 session.RepoPath,
                 windowStart,
@@ -665,7 +665,7 @@ public partial class MiningViewModel : ObservableObject
                 options,
                 authorFilters,
                 progressReporter,
-                cancellationToken);
+                cancellationToken));
 
             if (!result.Success)
             {
@@ -686,6 +686,11 @@ public partial class MiningViewModel : ObservableObject
         }
 
         return totalResult;
+    }
+
+    private static Task<MiningResult> RunMiningInBackgroundAsync(Func<Task<MiningResult>> action)
+    {
+        return Task.Run(action);
     }
 
     private async Task<(DateTime start, DateTime end)?> TryGetGapWindowAsync(Session session, SessionOptions options)

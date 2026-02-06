@@ -31,11 +31,11 @@
                         <TextBlock FontSize="24" FontWeight="SemiBold" Text="{Binding Session.Name, FallbackValue='Loading...', TargetNullValue='Loading...'}"/>
                         <TextBlock FontSize="14" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,4,0,0">
                             <Run Text="Repository: "/>
-                            <Run Text="{Binding Session.RepoPath, FallbackValue='...', TargetNullValue='...'}"/>
+                            <Run Text="{Binding Session.RepoPath, Mode=OneWay, FallbackValue='...', TargetNullValue='...'}"/>
                         </TextBlock>
                         <TextBlock FontSize="14" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,2,0,0">
                             <Run Text="Created: "/>
-                            <Run Text="{Binding Session.CreatedAt, StringFormat='yyyy-MM-dd HH:mm', FallbackValue='...', TargetNullValue='...'}"/>
+                            <Run Text="{Binding Session.CreatedAt, Mode=OneWay, StringFormat='yyyy-MM-dd HH:mm', FallbackValue='...', TargetNullValue='...'}"/>
                         </TextBlock>
                     </StackPanel>
 
@@ -417,9 +417,9 @@
                                                             <StackPanel>
                                                                 <TextBlock FontWeight="SemiBold">
                                                                     <Run Text="Branch: "/>
-                                                                    <Run Text="{Binding BranchName}"/>
+                                                                    <Run Text="{Binding BranchName, Mode=OneWay}"/>
                                                                     <Run Text=" ("/>
-                                                                    <Run Text="{Binding CommitCount}"/>
+                                                                    <Run Text="{Binding CommitCount, Mode=OneWay}"/>
                                                                     <Run Text=" commits)"/>
                                                                 </TextBlock>
                                                                 <ItemsControl ItemsSource="{Binding Commits}">
@@ -430,9 +430,9 @@
                                                                                        TextWrapping="Wrap"
                                                                                        Width="{Binding RelativeSource={RelativeSource AncestorType=ScrollViewer}, Path=ViewportWidth}">
                                                                                 <Run Text="["/>
-                                                                                <Run Text="{Binding Sha}"/>
+                                                                                <Run Text="{Binding Sha, Mode=OneWay}"/>
                                                                                 <Run Text="] "/>
-                                                                                <Run Text="{Binding Subject}"/>
+                                                                                <Run Text="{Binding Subject, Mode=OneWay}"/>
                                                                             </TextBlock>
                                                                         </DataTemplate>
                                                                     </ItemsControl.ItemTemplate>

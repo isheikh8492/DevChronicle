@@ -143,8 +143,8 @@
                             <StackPanel>
                                 <TextBlock Text="Max bullets per day" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,6"/>
                                 <ui:NumberBox Value="{Binding MaxBulletsPerDay, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                              Minimum="4"
-                                              Maximum="10"
+                                              Minimum="1"
+                                              Maximum="60"
                                               SpinButtonPlacementMode="Inline"/>
                             </StackPanel>
                         </Border>
