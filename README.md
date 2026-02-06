@@ -65,6 +65,22 @@ dotnet build DevChronicle.csproj -v minimal -p:OutDir=artifacts\tmpbuild\
 dotnet run --project DevChronicle.csproj
 ```
 
+## Tests
+
+Test project: `Tests/DevChronicle.Tests/DevChronicle.Tests.csproj`
+
+Run all tests:
+
+```powershell
+dotnet test
+```
+
+If the app is running and locks `DevChronicle.exe`, use an alternate output folder:
+
+```powershell
+dotnet test Tests/DevChronicle.Tests/DevChronicle.Tests.csproj -p:OutDir=artifacts\tmpbuild\
+```
+
 ## Tech stack
 
 - `.NET 8` + `WPF`
