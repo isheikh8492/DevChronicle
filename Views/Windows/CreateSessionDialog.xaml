@@ -67,17 +67,6 @@
                     Click="BrowseButton_Click"/>
             </Grid>
 
-            <!-- Main Branch -->
-            <TextBlock
-                Text="Main Branch"
-                FontWeight="Medium"
-                Margin="0,0,0,8"/>
-            <ui:TextBox
-                x:Name="MainBranchTextBox"
-                PlaceholderText="main"
-                Text="main"
-                Margin="0,0,0,16"/>
-
             <!-- Author Filters -->
             <TextBlock
                 Text="Author Filters (optional)"

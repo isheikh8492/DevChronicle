@@ -21,7 +21,7 @@ public partial class CreateSessionDialog : FluentWindow
         _settingsService = App.ServiceProvider.GetRequiredService<SettingsService>();
 
         // Set default session name
-        SessionNameTextBox.Text = $"Session {DateTime.Now:yyyy-MM-dd}";
+        SessionNameTextBox.Text = $"Session_{DateTime.Now:MMddyyyy_HHmmss}";
 
         if (RangeEndDatePicker != null)
             RangeEndDatePicker.SelectedDate = DateTime.Today;
@@ -84,12 +84,6 @@ public partial class CreateSessionDialog : FluentWindow
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(MainBranchTextBox.Text))
-        {
-            ShowValidationError("Please enter a main branch name.");
-            return;
-        }
-
         if (MineAllHistoryCheckBox == null || RangeStartDatePicker == null || RangeEndDatePicker == null)
         {
             ShowValidationError("Date range controls are not available.");
@@ -146,7 +140,7 @@ public partial class CreateSessionDialog : FluentWindow
         {
             Name = SessionNameTextBox.Text.Trim(),
             RepoPath = RepoPathTextBox.Text.Trim(),
-            MainBranch = MainBranchTextBox.Text.Trim(),
+            MainBranch = "main",
             CreatedAt = DateTime.UtcNow,
             AuthorFiltersJson = JsonSerializer.Serialize(authorFilters),
             OptionsJson = JsonSerializer.Serialize(options),
