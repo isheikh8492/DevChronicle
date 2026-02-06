@@ -7,8 +7,16 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DevChronicle.Services;
 using Microsoft.Win32;
+using WinForms = System.Windows.Forms;
 
 namespace DevChronicle.ViewModels;
+
+public enum ExportMode
+{
+    Hub = 0,
+    NewTarget = 1,
+    UpdateDiary = 2
+}
 
 /// <summary>
 /// ViewModel for Phase C: Export controls.
@@ -16,21 +24,23 @@ namespace DevChronicle.ViewModels;
 public partial class ExportViewModel : ObservableObject
 {
     private readonly ExportService _exportService;
-    private readonly SessionContextService _sessionContext;
     private readonly DatabaseService _databaseService;
     private bool _isUpdatingSelectAll;
+    private CancellationTokenSource? _cancellationTokenSource;
+
+    public bool HasDiaryPath => !string.IsNullOrWhiteSpace(DiaryPath);
+    public bool HasDiffPreview => CurrentDiff != null;
+    public int SelectedSessionCount => Sessions.Count(s => s.IsSelected);
+    public bool CanConvertToManaged => IsDiaryUnmanaged && SelectedSessionCount > 0 && !IsBusy;
 
     [ObservableProperty]
-    private DateTime startDate = DateTime.Now.AddDays(-30);
+    private ExportMode mode = ExportMode.Hub;
 
     [ObservableProperty]
-    private DateTime endDate = DateTime.Now;
+    private string status = "Ready";
 
     [ObservableProperty]
-    private string status = "Ready to export";
-
-    [ObservableProperty]
-    private bool isExporting;
+    private bool isBusy;
 
     [ObservableProperty]
     private bool isLoading;
@@ -41,16 +51,48 @@ public partial class ExportViewModel : ObservableObject
     [ObservableProperty]
     private bool selectAll;
 
+    [ObservableProperty]
+    private string outputDirectory = string.Empty;
+
+    [ObservableProperty]
+    private bool exportDiary = true;
+
+    [ObservableProperty]
+    private bool exportArchive = true;
+
+    [ObservableProperty]
+    private ExportFormat selectedFormat = ExportFormat.MarkdownAndJson;
+
+    [ObservableProperty]
+    private bool hideRepoPathsInMarkdown = true;
+
+    [ObservableProperty]
+    private bool includePlaceholders = true;
+
+    [ObservableProperty]
+    private string? diaryPath;
+
+    [ObservableProperty]
+    private bool isDiaryManaged;
+
+    [ObservableProperty]
+    private bool isDiaryUnmanaged;
+
+    [ObservableProperty]
+    private DiaryDiff? currentDiff;
+
+    [ObservableProperty]
+    private ObservableCollection<int> boundSessionIds = new();
+
     public ExportViewModel(
         ExportService exportService,
-        SessionContextService sessionContext,
         DatabaseService databaseService)
     {
         _exportService = exportService;
-        _sessionContext = sessionContext;
         _databaseService = databaseService;
 
         _ = LoadSessionsAsync();
+        _ = LoadExportSettingsAsync();
     }
 
     partial void OnSelectAllChanged(bool value)
@@ -64,6 +106,29 @@ public partial class ExportViewModel : ObservableObject
             session.IsSelected = value;
         }
         _isUpdatingSelectAll = false;
+
+        OnPropertyChanged(nameof(SelectedSessionCount));
+        OnPropertyChanged(nameof(CanConvertToManaged));
+    }
+
+    partial void OnDiaryPathChanged(string? value)
+    {
+        OnPropertyChanged(nameof(HasDiaryPath));
+    }
+
+    partial void OnCurrentDiffChanged(DiaryDiff? value)
+    {
+        OnPropertyChanged(nameof(HasDiffPreview));
+    }
+
+    partial void OnIsBusyChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanConvertToManaged));
+    }
+
+    partial void OnIsDiaryUnmanagedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanConvertToManaged));
     }
 
     [RelayCommand]
@@ -114,118 +179,447 @@ public partial class ExportViewModel : ObservableObject
             SelectAll = allSelected;
             _isUpdatingSelectAll = false;
         }
+
+        OnPropertyChanged(nameof(SelectedSessionCount));
+        OnPropertyChanged(nameof(CanConvertToManaged));
     }
 
     [RelayCommand]
-    private async Task ExportDeveloperDiaryAsync()
+    private void GoToHub()
     {
-        var session = _sessionContext.CurrentSession;
-        if (session == null)
+        Mode = ExportMode.Hub;
+        CurrentDiff = null;
+        BoundSessionIds.Clear();
+        DiaryPath = null;
+        IsDiaryManaged = false;
+        IsDiaryUnmanaged = false;
+    }
+
+    [RelayCommand]
+    private void GoToNewTarget()
+    {
+        Mode = ExportMode.NewTarget;
+    }
+
+    [RelayCommand]
+    private void GoToUpdateDiary()
+    {
+        Mode = ExportMode.UpdateDiary;
+        CurrentDiff = null;
+        BoundSessionIds.Clear();
+        DiaryPath = null;
+        IsDiaryManaged = false;
+        IsDiaryUnmanaged = false;
+    }
+
+    [RelayCommand]
+    private void Cancel()
+    {
+        _cancellationTokenSource?.Cancel();
+    }
+
+    [RelayCommand]
+    private async Task ChooseOutputDirectoryAsync()
+    {
+        using var dialog = new WinForms.FolderBrowserDialog
         {
-            Status = "No session selected";
+            Description = "Select export output folder",
+            UseDescriptionForTitle = true,
+            ShowNewFolderButton = true
+        };
+
+        if (dialog.ShowDialog() != WinForms.DialogResult.OK)
+            return;
+
+        OutputDirectory = dialog.SelectedPath;
+        await _databaseService.UpsertAppSettingAsync("export.last_dir", OutputDirectory);
+    }
+
+    [RelayCommand]
+    private async Task ExportNewAsync()
+    {
+        if (IsBusy)
+            return;
+
+        var selectedIds = Sessions.Where(s => s.IsSelected).Select(s => s.Id).ToList();
+        if (selectedIds.Count == 0)
+        {
+            Status = "Select at least one session.";
             return;
         }
 
-        // Show save file dialog
-        var dialog = new Microsoft.Win32.SaveFileDialog
+        if (string.IsNullOrWhiteSpace(OutputDirectory))
         {
-            FileName = $"DeveloperDiary_{session.Name}_{DateTime.Now:yyyyMMdd}.md",
+            Status = "Choose an output directory.";
+            return;
+        }
+
+        var effectiveFormat = (ExportDiary, ExportArchive) switch
+        {
+            (true, true) => ExportFormat.MarkdownAndJson,
+            (true, false) => ExportFormat.MarkdownOnly,
+            (false, true) => ExportFormat.JsonOnly,
+            _ => ExportFormat.MarkdownAndJson
+        };
+
+        SelectedFormat = effectiveFormat;
+
+        IsBusy = true;
+        Status = "Exporting...";
+        _cancellationTokenSource = new CancellationTokenSource();
+
+        try
+        {
+            var result = await _exportService.ExportAsync(new ExportRequest
+            {
+                SessionIds = selectedIds,
+                ExportDiary = ExportDiary,
+                ExportArchive = ExportArchive,
+                Format = SelectedFormat,
+                OutputDirectory = OutputDirectory,
+                HideRepoPathsInMarkdown = HideRepoPathsInMarkdown,
+                IncludePlaceholders = IncludePlaceholders,
+                CancellationToken = _cancellationTokenSource.Token
+            });
+
+            if (result.Canceled)
+            {
+                Status = "Canceled.";
+                return;
+            }
+
+            if (!result.Succeeded)
+            {
+                Status = $"Export failed: {result.ErrorMessage}";
+                return;
+            }
+
+            var files = result.FilesWritten.Select(Path.GetFileName).ToList();
+            Status = files.Count > 0
+                ? $"Exported: {string.Join(", ", files)}"
+                : "Export completed.";
+        }
+        catch (OperationCanceledException)
+        {
+            Status = "Canceled.";
+        }
+        catch (Exception ex)
+        {
+            Status = $"Export failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+            _cancellationTokenSource?.Dispose();
+            _cancellationTokenSource = null;
+        }
+    }
+
+    [RelayCommand]
+    private async Task BrowseDiaryAsync()
+    {
+        if (IsBusy)
+            return;
+
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
             Filter = "Markdown files (*.md)|*.md|All files (*.*)|*.*",
-            Title = "Export Developer Diary"
+            Title = "Select an existing Developer Diary"
         };
 
         if (dialog.ShowDialog() != true)
             return;
 
-        IsExporting = true;
-        Status = "Exporting developer diary...";
+        DiaryPath = dialog.FileName;
+        await ComputeDiaryDiffAsync();
+    }
+
+    [RelayCommand]
+    private async Task ComputeDiaryDiffAsync()
+    {
+        CurrentDiff = null;
+        BoundSessionIds.Clear();
+        IsDiaryManaged = false;
+        IsDiaryUnmanaged = false;
+
+        if (string.IsNullOrWhiteSpace(DiaryPath))
+            return;
+
+        IsBusy = true;
+        Status = "Inspecting diary...";
+        _cancellationTokenSource = new CancellationTokenSource();
 
         try
         {
-            var outputPath = await _exportService.ExportDeveloperDiaryAsync(
-                session.Id,
-                StartDate,
-                EndDate,
-                dialog.FileName);
+            var preview = await _exportService.PreviewDiaryUpdateAsync(new UpdateDiaryRequest
+            {
+                DiaryPath = DiaryPath,
+                CancellationToken = _cancellationTokenSource.Token
+            });
 
-            Status = $"Exported successfully to {Path.GetFileName(outputPath)}";
+            if (preview.Result.Canceled)
+            {
+                Status = "Canceled.";
+                return;
+            }
 
-            // Show success message
-            System.Windows.MessageBox.Show(
-                $"Developer diary exported successfully!\n\nFile: {outputPath}",
-                "Export Complete",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
+            if (!preview.Result.Succeeded)
+            {
+                IsDiaryUnmanaged = true;
+                Status = preview.Result.ErrorMessage ?? "Diary is unmanaged.";
+                return;
+            }
+
+            IsDiaryManaged = true;
+            CurrentDiff = preview.Diff;
+            foreach (var id in preview.BoundSessionIds)
+                BoundSessionIds.Add(id);
+
+            Status = preview.Diff.IsStale ? "Out of date." : "Up to date.";
+        }
+        catch (OperationCanceledException)
+        {
+            Status = "Canceled.";
         }
         catch (Exception ex)
         {
-            Status = $"Export failed: {ex.Message}";
-            System.Windows.MessageBox.Show(
-                $"Failed to export developer diary:\n\n{ex.Message}",
-                "Export Error",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
+            Status = $"Failed to inspect diary: {ex.Message}";
         }
         finally
         {
-            IsExporting = false;
+            IsBusy = false;
+            _cancellationTokenSource?.Dispose();
+            _cancellationTokenSource = null;
         }
     }
 
     [RelayCommand]
-    private async Task ExportResumeBulletsAsync()
+    private async Task ApplyDiaryUpdateAsync()
     {
-        var session = _sessionContext.CurrentSession;
-        if (session == null)
+        if (IsBusy)
+            return;
+
+        if (string.IsNullOrWhiteSpace(DiaryPath))
         {
-            Status = "No session selected";
+            Status = "Choose a diary file first.";
             return;
         }
 
-        // Show save file dialog
-        var dialog = new Microsoft.Win32.SaveFileDialog
-        {
-            FileName = $"ResumeBullets_{session.Name}_{DateTime.Now:yyyyMMdd}.md",
-            Filter = "Markdown files (*.md)|*.md|All files (*.*)|*.*",
-            Title = "Export Resume Bullets"
-        };
-
-        if (dialog.ShowDialog() != true)
-            return;
-
-        IsExporting = true;
-        Status = "Exporting resume bullets...";
+        IsBusy = true;
+        Status = "Updating diary...";
+        _cancellationTokenSource = new CancellationTokenSource();
 
         try
         {
-            var outputPath = await _exportService.ExportResumeBulletsAsync(
-                session.Id,
-                StartDate,
-                EndDate,
-                dialog.FileName,
-                maxBullets: 12);
+            var (diff, result) = await _exportService.UpdateDiaryAsync(new UpdateDiaryRequest
+            {
+                DiaryPath = DiaryPath,
+                CancellationToken = _cancellationTokenSource.Token
+            });
 
-            Status = $"Exported successfully to {Path.GetFileName(outputPath)}";
+            if (result.Canceled)
+            {
+                Status = "Canceled.";
+                return;
+            }
 
-            // Show success message
-            System.Windows.MessageBox.Show(
-                $"Resume bullets exported successfully!\n\nFile: {outputPath}",
-                "Export Complete",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
+            if (!result.Succeeded)
+            {
+                Status = $"Update failed: {result.ErrorMessage}";
+                return;
+            }
+
+            CurrentDiff = diff;
+            Status = "Diary updated.";
+        }
+        catch (OperationCanceledException)
+        {
+            Status = "Canceled.";
+        }
+        catch (Exception ex)
+        {
+            Status = $"Update failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+            _cancellationTokenSource?.Dispose();
+            _cancellationTokenSource = null;
+        }
+    }
+
+    [RelayCommand]
+    private async Task ConvertToManagedAsync()
+    {
+        if (IsBusy)
+            return;
+
+        if (string.IsNullOrWhiteSpace(DiaryPath))
+        {
+            Status = "Choose a diary file first.";
+            return;
+        }
+
+        var selectedIds = Sessions.Where(s => s.IsSelected).Select(s => s.Id).ToList();
+        if (selectedIds.Count == 0)
+        {
+            Status = "Select sessions to bind to the managed diary, then convert.";
+            return;
+        }
+
+        IsBusy = true;
+        Status = "Converting to managed diary...";
+        _cancellationTokenSource = new CancellationTokenSource();
+
+        try
+        {
+            var output = await _exportService.ConvertUnmanagedDiaryToManagedAsync(
+                inputDiaryPath: DiaryPath,
+                sessionIds: selectedIds,
+                hideRepoPaths: HideRepoPathsInMarkdown,
+                includePlaceholders: IncludePlaceholders,
+                cancellationToken: _cancellationTokenSource.Token);
+
+            DiaryPath = output;
+            Status = "Converted. Inspecting...";
+            await ComputeDiaryDiffAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            Status = "Canceled.";
+        }
+        catch (Exception ex)
+        {
+            Status = $"Convert failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+            _cancellationTokenSource?.Dispose();
+            _cancellationTokenSource = null;
+        }
+    }
+
+    [RelayCommand]
+    private async Task ExportSingleDiaryAsync(ExportSessionItemViewModel? session)
+    {
+        if (session == null || IsBusy)
+            return;
+
+        await ExportSingleSessionAsync(session, exportDiary: true, exportArchive: false);
+    }
+
+    [RelayCommand]
+    private async Task ExportSingleArchiveAsync(ExportSessionItemViewModel? session)
+    {
+        if (session == null || IsBusy)
+            return;
+
+        await ExportSingleSessionAsync(session, exportDiary: false, exportArchive: true);
+    }
+
+    [RelayCommand]
+    private async Task ExportSingleBothAsync(ExportSessionItemViewModel? session)
+    {
+        if (session == null || IsBusy)
+            return;
+
+        await ExportSingleSessionAsync(session, exportDiary: true, exportArchive: true);
+    }
+
+    private async Task ExportSingleSessionAsync(ExportSessionItemViewModel session, bool exportDiary, bool exportArchive)
+    {
+        if (string.IsNullOrWhiteSpace(OutputDirectory))
+        {
+            Status = "Choose an output directory first.";
+            return;
+        }
+
+        var perSessionDir = Path.Combine(OutputDirectory, "PerSession");
+        Directory.CreateDirectory(perSessionDir);
+
+        var dateStamp = DateTime.Now.ToString("yyyy-MM-dd");
+        var diaryFileName = $"Diary.Session_{session.Id}.{dateStamp}.md";
+        var archiveFileName = $"Archive.Session_{session.Id}.{dateStamp}.json";
+
+        IsBusy = true;
+        Status = $"Exporting session {session.Id}...";
+        _cancellationTokenSource = new CancellationTokenSource();
+
+        try
+        {
+            var effectiveFormat = (exportDiary, exportArchive) switch
+            {
+                (true, true) => ExportFormat.MarkdownAndJson,
+                (true, false) => ExportFormat.MarkdownOnly,
+                (false, true) => ExportFormat.JsonOnly,
+                _ => ExportFormat.MarkdownAndJson
+            };
+
+            var result = await _exportService.ExportAsync(new ExportRequest
+            {
+                SessionIds = new[] { session.Id },
+                ExportDiary = exportDiary,
+                ExportArchive = exportArchive,
+                Format = effectiveFormat,
+                OutputDirectory = perSessionDir,
+                DiaryFileName = exportDiary ? diaryFileName : null,
+                ArchiveFileName = exportArchive ? archiveFileName : null,
+                HideRepoPathsInMarkdown = HideRepoPathsInMarkdown,
+                IncludePlaceholders = IncludePlaceholders,
+                CancellationToken = _cancellationTokenSource.Token
+            });
+
+            if (result.Canceled)
+            {
+                Status = "Canceled.";
+                return;
+            }
+
+            if (!result.Succeeded)
+            {
+                Status = $"Export failed: {result.ErrorMessage}";
+                return;
+            }
+
+            var files = result.FilesWritten.Select(Path.GetFileName).ToList();
+            Status = files.Count > 0
+                ? $"Exported: {string.Join(", ", files)}"
+                : "Export completed.";
+        }
+        catch (OperationCanceledException)
+        {
+            Status = "Canceled.";
         }
         catch (Exception ex)
         {
             Status = $"Export failed: {ex.Message}";
-            System.Windows.MessageBox.Show(
-                $"Failed to export resume bullets:\n\n{ex.Message}",
-                "Export Error",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
         }
         finally
         {
-            IsExporting = false;
+            IsBusy = false;
+            _cancellationTokenSource?.Dispose();
+            _cancellationTokenSource = null;
+        }
+    }
+
+    private async Task LoadExportSettingsAsync()
+    {
+        try
+        {
+            var lastDir = await _databaseService.GetAppSettingAsync("export.last_dir");
+            if (!string.IsNullOrWhiteSpace(lastDir))
+            {
+                OutputDirectory = lastDir;
+                return;
+            }
+
+            var docs = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+            OutputDirectory = Path.Combine(docs, "DevChronicleExports");
+        }
+        catch
+        {
+            // ignore settings load failures
         }
     }
 }

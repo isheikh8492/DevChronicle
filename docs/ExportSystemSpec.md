@@ -248,7 +248,7 @@ After a successful update:
 
 ### Combined Multi-Session Archive (v1 default)
 - One JSON file containing:
-  - `schemaVersion`
+  - `schemaVersion` (fixed `"1.0"`)
   - `exportedAt`
   - `sessions[]`:
     - session metadata
@@ -264,6 +264,15 @@ After a successful update:
 - days ordered ascending
 - commits ordered by author_date then sha
 - files ordered by path
+
+### Per-Session Quick Export (Secondary)
+The Hub may provide a low-attention per-session action (e.g. context menu) that exports a single session into separate files.
+
+Defaults:
+- Output directory: `<OutputDirectory>/PerSession/`
+- Filenames include session id and a date stamp (examples):
+  - `Diary.Session_123.2026-02-05.md`
+  - `Archive.Session_123.2026-02-05.json`
 
 ---
 
@@ -324,3 +333,19 @@ This section defines best practices required for a production-grade implementati
 - Unmanaged diaries are never edited; conversion creates a new managed file.
 - Multi-session diary is grouped by date, ordered by repo/session deterministically.
 - Archive contains commits + file evidence; diary remains summary-first.
+
+---
+
+## Implementation Notes (v1)
+
+### Managed Diary Update Strategy
+The spec defines a marker-based update model that preserves all user-authored text outside DC markers.
+
+For v1, an acceptable implementation strategy is:
+- Parse and replace the manifest line in-place (single-line replacement).
+- Regenerate the entire managed section (all `DC:DAY`/`DC:ENTRY` blocks) deterministically from the DB.
+- Splice the regenerated managed section into the file (replacing the existing managed section).
+
+This remains compliant so long as:
+- User-authored text outside DC markers is preserved verbatim.
+- Writes are atomic and create a `.bak` backup on update.

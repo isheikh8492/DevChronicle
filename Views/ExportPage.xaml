@@ -1,119 +1,396 @@
-<Page x:Class="DevChronicle.Views.ExportPage"
+﻿<Page x:Class="DevChronicle.Views.ExportPage"
       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
       xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+      xmlns:vm="clr-namespace:DevChronicle.ViewModels"
+      xmlns:services="clr-namespace:DevChronicle.Services"
       Title="Export"
       Foreground="{DynamicResource TextFillColorPrimaryBrush}">
 
-    <ScrollViewer>
-        <StackPanel Margin="56,24,56,24">
-            <TextBlock
-                FontSize="28"
-                FontWeight="SemiBold"
-                Text="Export"
-                Margin="0,0,0,6"/>
-            <TextBlock
-                FontSize="14"
-                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                Text="Generate diaries, resume bullets, and archival exports."
-                Margin="0,0,0,20"/>
-
-            <Border Margin="0,0,0,16"
-                    Padding="20"
-                    CornerRadius="10"
-                    BorderThickness="1"
-                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
-                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
-                <StackPanel>
+    <Page.Resources>
+        <DataTemplate x:Key="HubTemplate">
+            <StackPanel>
+                <Border Margin="0,0,0,16"
+                        Padding="20"
+                        CornerRadius="10"
+                        BorderThickness="1"
+                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                        Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="12"/>
+                            <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <CheckBox Grid.Column="0"
-                                  Content="Select all"
-                                  VerticalAlignment="Center"
-                                  IsChecked="{Binding SelectAll, Mode=TwoWay}"/>
+
+                        <StackPanel Grid.Column="0">
+                            <TextBlock FontSize="14" FontWeight="SemiBold" Text="Export Hub"/>
+                            <TextBlock FontSize="12"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       Text="Select sessions for new exports, or update an existing managed diary."/>
+                        </StackPanel>
+
                         <ui:Button Grid.Column="1"
-                                   Content="Export Selected as Markdown"
-                                   Appearance="Primary"/>
+                                   Content="Create New Export..."
+                                   Appearance="Primary"
+                                   Padding="12,6"
+                                   Command="{Binding GoToNewTargetCommand}"
+                                   IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}"/>
+
+                        <ui:Button Grid.Column="3"
+                                   Content="Update Existing Diary..."
+                                   Appearance="Secondary"
+                                   Padding="12,6"
+                                   Command="{Binding GoToUpdateDiaryCommand}"
+                                   IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}"/>
                     </Grid>
-                </StackPanel>
-            </Border>
+                </Border>
 
-            <Border Padding="20"
-                    CornerRadius="10"
-                    BorderThickness="1"
-                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
-                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
-                <StackPanel>
-                    <TextBlock FontSize="16" FontWeight="SemiBold" Text="Sessions" Margin="0,0,0,12"/>
+                <Border Padding="20"
+                        CornerRadius="10"
+                        BorderThickness="1"
+                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                        Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
+                    <StackPanel>
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" FontSize="16" FontWeight="SemiBold" Text="Sessions"/>
+                            <CheckBox Grid.Column="1"
+                                      Content="Select all"
+                                      VerticalAlignment="Center"
+                                      IsChecked="{Binding SelectAll, Mode=TwoWay}"/>
+                        </Grid>
 
-                    <ItemsControl ItemsSource="{Binding Sessions}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Grid Margin="0,0,0,12">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="12"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
+                        <ItemsControl ItemsSource="{Binding Sessions}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,0,0,12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="12"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
 
-                                    <CheckBox Grid.Column="0"
-                                              VerticalAlignment="Center"
-                                              IsChecked="{Binding IsSelected, Mode=TwoWay}"/>
+                                        <CheckBox Grid.Column="0"
+                                                  VerticalAlignment="Center"
+                                                  IsChecked="{Binding IsSelected, Mode=TwoWay}"/>
 
-                                    <Border Grid.Column="2"
-                                            BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
-                                            BorderThickness="1"
-                                            CornerRadius="8"
-                                            Padding="12">
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="16"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
+                                        <Border Grid.Column="2"
+                                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="8"
+                                                Padding="12">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="16"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
 
-                                            <StackPanel Grid.Column="0">
-                                                <TextBlock FontSize="14"
-                                                           FontWeight="SemiBold"
-                                                           Text="{Binding Name}"/>
-                                                <TextBlock FontSize="12"
-                                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                           Text="{Binding RepoAndRange}"
-                                                           TextTrimming="CharacterEllipsis"/>
-                                                <TextBlock FontSize="12"
-                                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                           Text="{Binding RepoPath}"
-                                                           TextTrimming="CharacterEllipsis"/>
-                                                <TextBlock FontSize="12"
-                                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                           Text="{Binding CreatedAtDisplay}"
-                                                           Margin="0,2,0,0"/>
-                                            </StackPanel>
-
-                                            <Border Grid.Column="2"
-                                                    Background="#1F2329"
-                                                    CornerRadius="6"
-                                                    Padding="12">
-                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                                    <ui:Button Content="Diary" Appearance="Primary" Padding="10,6" Margin="0,0,8,0"
-                                                               IsEnabled="{Binding IsSelected}"/>
-                                                    <ui:Button Content="Resume" Appearance="Secondary" Padding="10,6" Margin="0,0,8,0"
-                                                               IsEnabled="{Binding IsSelected}"/>
-                                                    <ui:Button Content="Archive" Appearance="Secondary" Padding="10,6"
-                                                               IsEnabled="{Binding IsSelected}"/>
+                                                <StackPanel Grid.Column="0">
+                                                    <TextBlock FontSize="14" FontWeight="SemiBold" Text="{Binding Name}"/>
+                                                    <TextBlock FontSize="12"
+                                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                               Text="{Binding RepoAndRange}"
+                                                               TextTrimming="CharacterEllipsis"/>
+                                                    <TextBlock FontSize="12"
+                                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                               Text="{Binding RepoPath}"
+                                                               TextTrimming="CharacterEllipsis"/>
+                                                    <TextBlock FontSize="12"
+                                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                               Text="{Binding CreatedAtDisplay}"
+                                                               Margin="0,2,0,0"/>
                                                 </StackPanel>
-                                            </Border>
-                                        </Grid>
-                                    </Border>
+
+                                                <Border Grid.Column="2"
+                                                        Background="#1F2329"
+                                                        CornerRadius="6"
+                                                        Padding="12">
+                                                    <ui:Button Content="..."
+                                                               Appearance="Secondary"
+                                                               Padding="10,6"
+                                                               HorizontalAlignment="Center"
+                                                               VerticalAlignment="Center"
+                                                               Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Page}}">
+                                                        <ui:Button.ContextMenu>
+                                                            <ContextMenu>
+                                                                <MenuItem Header="Export diary (this session)"
+                                                                          Command="{Binding PlacementTarget.Tag.ExportSingleDiaryCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                                          CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                                                                <MenuItem Header="Export archive (this session)"
+                                                                          Command="{Binding PlacementTarget.Tag.ExportSingleArchiveCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                                          CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                                                                <MenuItem Header="Export both (this session)"
+                                                                          Command="{Binding PlacementTarget.Tag.ExportSingleBothCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                                          CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                                                            </ContextMenu>
+                                                        </ui:Button.ContextMenu>
+                                                    </ui:Button>
+                                                </Border>
+                                            </Grid>
+                                        </Border>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </DataTemplate>
+
+        <DataTemplate x:Key="NewTargetTemplate">
+            <StackPanel>
+                <Border Margin="0,0,0,16"
+                        Padding="20"
+                        CornerRadius="10"
+                        BorderThickness="1"
+                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                        Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
+                    <StackPanel>
+                        <TextBlock FontSize="16" FontWeight="SemiBold" Text="Create New Export" Margin="0,0,0,6"/>
+                        <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Exports new managed diary and/or archive for the currently selected sessions."/>
+
+                        <Grid Margin="0,16,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0">
+                                <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Output folder"/>
+                                <TextBlock FontSize="13" Text="{Binding OutputDirectory}" TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
+
+                            <ui:Button Grid.Column="1"
+                                       Content="Choose..."
+                                       Appearance="Secondary"
+                                       Padding="10,6"
+                                       Command="{Binding ChooseOutputDirectoryCommand}"
+                                       IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}"/>
+                        </Grid>
+
+                        <Grid Margin="0,16,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="16"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="16"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <CheckBox Grid.Column="0" Content="Diary" IsChecked="{Binding ExportDiary, Mode=TwoWay}"/>
+                            <CheckBox Grid.Column="2" Content="Archive" IsChecked="{Binding ExportArchive, Mode=TwoWay}"/>
+
+                            <TextBlock Grid.Column="4" Text="Format:" VerticalAlignment="Center"/>
+                            <ComboBox Grid.Column="5" Width="180" SelectedValue="{Binding SelectedFormat}" SelectedValuePath="Tag">
+                                <ComboBoxItem Content="Markdown + JSON" Tag="{x:Static services:ExportFormat.MarkdownAndJson}"/>
+                                <ComboBoxItem Content="Markdown only" Tag="{x:Static services:ExportFormat.MarkdownOnly}"/>
+                                <ComboBoxItem Content="JSON only" Tag="{x:Static services:ExportFormat.JsonOnly}"/>
+                            </ComboBox>
+                        </Grid>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                            <CheckBox Content="Hide repo paths in Markdown" IsChecked="{Binding HideRepoPathsInMarkdown, Mode=TwoWay}" Margin="0,0,16,0"/>
+                            <CheckBox Content="Include placeholders" IsChecked="{Binding IncludePlaceholders, Mode=TwoWay}"/>
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,16,0,0" HorizontalAlignment="Right">
+                            <ui:Button Content="Back"
+                                       Appearance="Secondary"
+                                       Padding="12,6"
+                                       Margin="0,0,8,0"
+                                       Command="{Binding GoToHubCommand}"
+                                       IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}"/>
+                            <ui:Button Content="Export"
+                                       Appearance="Primary"
+                                       Padding="12,6"
+                                       Command="{Binding ExportNewCommand}"
+                                       IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}"/>
+                            <ui:Button Content="Cancel"
+                                       Appearance="Danger"
+                                       Padding="12,6"
+                                       Margin="8,0,0,0"
+                                       Command="{Binding CancelCommand}"
+                                       IsEnabled="{Binding IsBusy}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </DataTemplate>
+
+        <DataTemplate x:Key="UpdateDiaryTemplate">
+            <StackPanel>
+                <Border Margin="0,0,0,16"
+                        Padding="20"
+                        CornerRadius="10"
+                        BorderThickness="1"
+                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                        Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
+                    <StackPanel>
+                        <TextBlock FontSize="16" FontWeight="SemiBold" Text="Update Existing Diary" Margin="0,0,0,6"/>
+                        <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Loads a diary file and updates DevChronicle-generated sections from the database."/>
+
+                        <Grid Margin="0,16,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0">
+                                <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Diary file"/>
+                                <TextBlock FontSize="13" Text="{Binding DiaryPath}" TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
+
+                            <ui:Button Grid.Column="1"
+                                       Content="Browse..."
+                                       Appearance="Secondary"
+                                       Padding="10,6"
+                                       Command="{Binding BrowseDiaryCommand}"
+                                       IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}"/>
+                        </Grid>
+
+                        <Border Margin="0,16,0,0" Padding="12" CornerRadius="8" Background="#1F2329">
+                            <StackPanel>
+                                <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Status"/>
+                                <TextBlock FontSize="13" Text="{Binding Status}"/>
+                                <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,8,0,0" Text="Bound sessions (managed diaries)"/>
+                                <ItemsControl ItemsSource="{Binding BoundSessionIds}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock FontSize="12" Text="{Binding StringFormat=Session ID: {0}}"/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Margin="0,16,0,0"
+                                Padding="12"
+                                CornerRadius="8"
+                                Background="#1F2329"
+                                Visibility="{Binding HasDiffPreview, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <StackPanel>
+                                <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Diff preview"/>
+                                <TextBlock FontSize="13">
+                                    <Run Text="New: "/><Run Text="{Binding CurrentDiff.New}"/>
+                                    <Run Text="   Updated: "/><Run Text="{Binding CurrentDiff.Updated}"/>
+                                    <Run Text="   Unchanged: "/><Run Text="{Binding CurrentDiff.Unchanged}"/>
+                                    <Run Text="   Extra: "/><Run Text="{Binding CurrentDiff.Extra}"/>
+                                </TextBlock>
+                                <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,6,0,0"
+                                           Text="If unmanaged, convert to managed before updating."/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Margin="0,16,0,0"
+                                Padding="12"
+                                CornerRadius="8"
+                                Background="#1F2329"
+                                Visibility="{Binding IsDiaryUnmanaged, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Sessions to bind (for conversion)"/>
+                                    <CheckBox Grid.Column="1"
+                                              Content="Select all"
+                                              VerticalAlignment="Center"
+                                              IsChecked="{Binding SelectAll, Mode=TwoWay}"/>
                                 </Grid>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </StackPanel>
-            </Border>
+
+                                <TextBlock FontSize="12"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           Text="These sessions will populate the DevChronicle-managed section appended to the new file."
+                                           Margin="0,0,0,10"/>
+
+                                <ItemsControl ItemsSource="{Binding Sessions}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,0,0,8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="10"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <CheckBox Grid.Column="0"
+                                                          VerticalAlignment="Center"
+                                                          IsChecked="{Binding IsSelected, Mode=TwoWay}"/>
+                                                <StackPanel Grid.Column="2">
+                                                    <TextBlock FontSize="13" Text="{Binding Name}"/>
+                                                    <TextBlock FontSize="12"
+                                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                               Text="{Binding RepoAndRange}"
+                                                               TextTrimming="CharacterEllipsis"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,16,0,0" HorizontalAlignment="Right">
+                            <ui:Button Content="Back"
+                                       Appearance="Secondary"
+                                       Padding="12,6"
+                                       Margin="0,0,8,0"
+                                       Command="{Binding GoToHubCommand}"
+                                       IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}"/>
+                            <ui:Button Content="Convert to managed..."
+                                       Appearance="Secondary"
+                                       Padding="12,6"
+                                       Margin="0,0,8,0"
+                                       Command="{Binding ConvertToManagedCommand}"
+                                       IsEnabled="{Binding CanConvertToManaged}"/>
+                            <ui:Button Content="Apply Update"
+                                       Appearance="Primary"
+                                       Padding="12,6"
+                                       Command="{Binding ApplyDiaryUpdateCommand}"
+                                       IsEnabled="{Binding IsDiaryManaged}"/>
+                            <ui:Button Content="Cancel"
+                                       Appearance="Danger"
+                                       Padding="12,6"
+                                       Margin="8,0,0,0"
+                                       Command="{Binding CancelCommand}"
+                                       IsEnabled="{Binding IsBusy}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </DataTemplate>
+    </Page.Resources>
+
+    <ScrollViewer>
+        <StackPanel Margin="56,24,56,24">
+            <TextBlock FontSize="28" FontWeight="SemiBold" Text="Export" Margin="0,0,0,6"/>
+            <TextBlock FontSize="14"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       Text="Create new exports or update an existing developer diary from the database."
+                       Margin="0,0,0,20"/>
+
+            <ContentControl Content="{Binding}">
+                <ContentControl.Style>
+                    <Style TargetType="ContentControl">
+                        <Setter Property="ContentTemplate" Value="{StaticResource HubTemplate}"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding Mode}" Value="{x:Static vm:ExportMode.NewTarget}">
+                                <Setter Property="ContentTemplate" Value="{StaticResource NewTargetTemplate}"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Mode}" Value="{x:Static vm:ExportMode.UpdateDiary}">
+                                <Setter Property="ContentTemplate" Value="{StaticResource UpdateDiaryTemplate}"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </ContentControl.Style>
+            </ContentControl>
         </StackPanel>
     </ScrollViewer>
 </Page>

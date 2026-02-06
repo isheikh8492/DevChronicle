@@ -1,4 +1,5 @@
 using System.IO;
+using System.Collections.Generic;
 using System.Linq;
 using Dapper;
 using DevChronicle.Models;
@@ -897,6 +898,242 @@ public class DatabaseService
             .Select(d => DateTime.TryParse(d, out var parsed) ? parsed.Date : DateTime.MinValue)
             .Where(d => d != DateTime.MinValue)
             .ToList();
+    }
+
+    // Export-oriented batch queries (avoid N+1 patterns)
+    public async Task<List<Session>> GetSessionsByIdsAsync(IEnumerable<int> sessionIds)
+    {
+        var ids = sessionIds.Distinct().ToList();
+        if (ids.Count == 0)
+            return new List<Session>();
+
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+
+        var sql = @"
+            SELECT
+                id AS Id,
+                name AS Name,
+                repo_path AS RepoPath,
+                main_branch AS MainBranch,
+                created_at AS CreatedAt,
+                author_filters_json AS AuthorFiltersJson,
+                options_json AS OptionsJson,
+                range_start AS RangeStart,
+                range_end AS RangeEnd
+            FROM sessions
+            WHERE id IN @Ids";
+
+        var rows = await connection.QueryAsync<Session>(sql, new { Ids = ids });
+        return rows.ToList();
+    }
+
+    public async Task<List<Models.Day>> GetDaysInRangeForSessionsAsync(IEnumerable<int> sessionIds, DateTime? start, DateTime? end)
+    {
+        var ids = sessionIds.Distinct().ToList();
+        if (ids.Count == 0)
+            return new List<Models.Day>();
+
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+
+        if (start.HasValue && end.HasValue)
+        {
+            var sql = @"
+                SELECT
+                    session_id AS SessionId,
+                    day AS Date,
+                    commit_count AS CommitCount,
+                    additions AS Additions,
+                    deletions AS Deletions,
+                    status AS Status
+                FROM days
+                WHERE session_id IN @SessionIds
+                  AND day BETWEEN @Start AND @End";
+
+            var rows = await connection.QueryAsync<Models.Day>(sql, new
+            {
+                SessionIds = ids,
+                Start = start.Value.Date.ToString("yyyy-MM-dd"),
+                End = end.Value.Date.ToString("yyyy-MM-dd")
+            });
+
+            return rows.ToList();
+        }
+        else
+        {
+            var sql = @"
+                SELECT
+                    session_id AS SessionId,
+                    day AS Date,
+                    commit_count AS CommitCount,
+                    additions AS Additions,
+                    deletions AS Deletions,
+                    status AS Status
+                FROM days
+                WHERE session_id IN @SessionIds";
+
+            var rows = await connection.QueryAsync<Models.Day>(sql, new { SessionIds = ids });
+            return rows.ToList();
+        }
+    }
+
+    public async Task<List<Commit>> GetCommitsInRangeForSessionsAsync(IEnumerable<int> sessionIds, DateTime? start, DateTime? end)
+    {
+        var ids = sessionIds.Distinct().ToList();
+        if (ids.Count == 0)
+            return new List<Commit>();
+
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+
+        if (start.HasValue && end.HasValue)
+        {
+            var sql = @"
+                SELECT
+                    session_id AS SessionId,
+                    sha AS Sha,
+                    author_date AS AuthorDate,
+                    author_name AS AuthorName,
+                    author_email AS AuthorEmail,
+                    committer_date AS CommitterDate,
+                    committer_name AS CommitterName,
+                    committer_email AS CommitterEmail,
+                    subject AS Subject,
+                    additions AS Additions,
+                    deletions AS Deletions,
+                    files_json AS FilesJson,
+                    is_merge AS IsMerge,
+                    reachable_from_main AS ReachableFromMain,
+                    patch_id AS PatchId
+                FROM commits
+                WHERE session_id IN @SessionIds
+                  AND DATE(author_date) BETWEEN @Start AND @End";
+
+            var rows = await connection.QueryAsync<Commit>(sql, new
+            {
+                SessionIds = ids,
+                Start = start.Value.Date.ToString("yyyy-MM-dd"),
+                End = end.Value.Date.ToString("yyyy-MM-dd")
+            });
+
+            return rows.ToList();
+        }
+        else
+        {
+            var sql = @"
+                SELECT
+                    session_id AS SessionId,
+                    sha AS Sha,
+                    author_date AS AuthorDate,
+                    author_name AS AuthorName,
+                    author_email AS AuthorEmail,
+                    committer_date AS CommitterDate,
+                    committer_name AS CommitterName,
+                    committer_email AS CommitterEmail,
+                    subject AS Subject,
+                    additions AS Additions,
+                    deletions AS Deletions,
+                    files_json AS FilesJson,
+                    is_merge AS IsMerge,
+                    reachable_from_main AS ReachableFromMain,
+                    patch_id AS PatchId
+                FROM commits
+                WHERE session_id IN @SessionIds";
+
+            var rows = await connection.QueryAsync<Commit>(sql, new { SessionIds = ids });
+            return rows.ToList();
+        }
+    }
+
+    public async Task<List<DaySummary>> GetLatestDaySummariesInRangeForSessionsAsync(IEnumerable<int> sessionIds, DateTime? start, DateTime? end)
+    {
+        var ids = sessionIds.Distinct().ToList();
+        if (ids.Count == 0)
+            return new List<DaySummary>();
+
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+
+        IEnumerable<DaySummary> rows;
+        if (start.HasValue && end.HasValue)
+        {
+            var sql = @"
+                SELECT
+                    session_id AS SessionId,
+                    day AS Day,
+                    bullets_text AS BulletsText,
+                    model AS Model,
+                    prompt_version AS PromptVersion,
+                    input_hash AS InputHash,
+                    created_at AS CreatedAt
+                FROM day_summaries
+                WHERE session_id IN @SessionIds
+                  AND day BETWEEN @Start AND @End
+                ORDER BY created_at DESC";
+
+            rows = await connection.QueryAsync<DaySummary>(sql, new
+            {
+                SessionIds = ids,
+                Start = start.Value.Date.ToString("yyyy-MM-dd"),
+                End = end.Value.Date.ToString("yyyy-MM-dd")
+            });
+        }
+        else
+        {
+            var sql = @"
+                SELECT
+                    session_id AS SessionId,
+                    day AS Day,
+                    bullets_text AS BulletsText,
+                    model AS Model,
+                    prompt_version AS PromptVersion,
+                    input_hash AS InputHash,
+                    created_at AS CreatedAt
+                FROM day_summaries
+                WHERE session_id IN @SessionIds
+                ORDER BY created_at DESC";
+
+            rows = await connection.QueryAsync<DaySummary>(sql, new { SessionIds = ids });
+        }
+
+        // Take latest per (session_id, day) deterministically using created_at ordering from SQL.
+        return rows
+            .GroupBy(r => (r.SessionId, r.Day.Date))
+            .Select(g => g.First())
+            .ToList();
+    }
+
+    public async Task<(DateTime? Start, DateTime? End)> GetEffectiveSessionRangeAsync(int sessionId)
+    {
+        var session = await GetSessionAsync(sessionId);
+        if (session == null)
+            return (null, null);
+
+        if (session.RangeStart.HasValue && session.RangeEnd.HasValue)
+            return (session.RangeStart.Value.Date, session.RangeEnd.Value.Date);
+
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+
+        var sql = @"
+            SELECT MIN(day) AS MinDay, MAX(day) AS MaxDay
+            FROM days
+            WHERE session_id = @SessionId";
+
+        var row = await connection.QuerySingleAsync(sql, new { SessionId = sessionId });
+        var minDay = row.MinDay as string;
+        var maxDay = row.MaxDay as string;
+
+        DateTime? start = null;
+        DateTime? end = null;
+
+        if (!string.IsNullOrWhiteSpace(minDay) && DateTime.TryParse(minDay, out var parsedMin))
+            start = parsedMin.Date;
+        if (!string.IsNullOrWhiteSpace(maxDay) && DateTime.TryParse(maxDay, out var parsedMax))
+            end = parsedMax.Date;
+
+        return (start, end);
     }
 
     public async Task UpsertDaySummaryAsync(DaySummary summary)
