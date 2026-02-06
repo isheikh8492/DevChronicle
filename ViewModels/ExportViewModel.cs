@@ -1,4 +1,7 @@
+using System;
+using System.Collections.ObjectModel;
 using System.IO;
+using System.Linq;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -14,6 +17,8 @@ public partial class ExportViewModel : ObservableObject
 {
     private readonly ExportService _exportService;
     private readonly SessionContextService _sessionContext;
+    private readonly DatabaseService _databaseService;
+    private bool _isUpdatingSelectAll;
 
     [ObservableProperty]
     private DateTime startDate = DateTime.Now.AddDays(-30);
@@ -27,12 +32,88 @@ public partial class ExportViewModel : ObservableObject
     [ObservableProperty]
     private bool isExporting;
 
+    [ObservableProperty]
+    private bool isLoading;
+
+    [ObservableProperty]
+    private ObservableCollection<ExportSessionItemViewModel> sessions = new();
+
+    [ObservableProperty]
+    private bool selectAll;
+
     public ExportViewModel(
         ExportService exportService,
-        SessionContextService sessionContext)
+        SessionContextService sessionContext,
+        DatabaseService databaseService)
     {
         _exportService = exportService;
         _sessionContext = sessionContext;
+        _databaseService = databaseService;
+
+        _ = LoadSessionsAsync();
+    }
+
+    partial void OnSelectAllChanged(bool value)
+    {
+        if (_isUpdatingSelectAll)
+            return;
+
+        _isUpdatingSelectAll = true;
+        foreach (var session in Sessions)
+        {
+            session.IsSelected = value;
+        }
+        _isUpdatingSelectAll = false;
+    }
+
+    [RelayCommand]
+    private async Task LoadSessionsAsync()
+    {
+        IsLoading = true;
+        try
+        {
+            var sessionsList = await _databaseService.GetAllSessionsAsync();
+
+            await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                Sessions.Clear();
+                foreach (var session in sessionsList)
+                {
+                    var item = new ExportSessionItemViewModel(session);
+                    item.SelectionChanged += OnSessionSelectionChanged;
+                    Sessions.Add(item);
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                System.Windows.MessageBox.Show(
+                    $"Failed to load sessions: {ex.Message}",
+                    "Error",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            });
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private void OnSessionSelectionChanged(object? sender, EventArgs e)
+    {
+        if (_isUpdatingSelectAll)
+            return;
+
+        var allSelected = Sessions.Count > 0 && Sessions.All(s => s.IsSelected);
+        if (SelectAll != allSelected)
+        {
+            _isUpdatingSelectAll = true;
+            SelectAll = allSelected;
+            _isUpdatingSelectAll = false;
+        }
     }
 
     [RelayCommand]
@@ -147,4 +228,55 @@ public partial class ExportViewModel : ObservableObject
             IsExporting = false;
         }
     }
+}
+
+public partial class ExportSessionItemViewModel : ObservableObject
+{
+    private readonly Models.Session _session;
+
+    public ExportSessionItemViewModel(Models.Session session)
+    {
+        _session = session;
+    }
+
+    public int Id => _session.Id;
+    public string Name => _session.Name;
+    public string RepoPath => _session.RepoPath;
+
+    public string RepoName
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(_session.RepoPath))
+                return "(unknown repo)";
+
+            var trimmed = _session.RepoPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            return Path.GetFileName(trimmed);
+        }
+    }
+
+    public string RangeDisplay
+    {
+        get
+        {
+            if (_session.RangeStart.HasValue && _session.RangeEnd.HasValue)
+                return $"{_session.RangeStart:yyyy-MM-dd} -> {_session.RangeEnd:yyyy-MM-dd}";
+
+            return "All history";
+        }
+    }
+
+    public string RepoAndRange => $"{RepoName} - {RangeDisplay}";
+
+    public string CreatedAtDisplay => $"Created: {_session.CreatedAt:yyyy-MM-dd HH:mm}";
+
+    [ObservableProperty]
+    private bool isSelected;
+
+    partial void OnIsSelectedChanged(bool value)
+    {
+        SelectionChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public event EventHandler? SelectionChanged;
 }

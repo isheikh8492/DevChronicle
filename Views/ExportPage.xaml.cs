@@ -1,4 +1,6 @@
 using System.Windows.Controls;
+using DevChronicle.ViewModels;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace DevChronicle.Views
 {
@@ -10,6 +12,7 @@ namespace DevChronicle.Views
         public ExportPage()
         {
             InitializeComponent();
+            DataContext = App.ServiceProvider.GetRequiredService<ExportViewModel>();
         }
     }
 }

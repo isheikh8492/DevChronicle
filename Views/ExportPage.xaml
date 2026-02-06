@@ -11,75 +11,109 @@
                 FontSize="28"
                 FontWeight="SemiBold"
                 Text="Export"
-                Margin="0,0,0,8"/>
+                Margin="0,0,0,6"/>
             <TextBlock
                 FontSize="14"
                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                Text="Export developer diary and resume bullets to markdown files."
-                Margin="0,0,0,24"/>
+                Text="Generate diaries, resume bullets, and archival exports."
+                Margin="0,0,0,20"/>
 
-            <ui:Card Margin="0,0,0,16">
-                <StackPanel Margin="20">
-                    <TextBlock FontSize="16" FontWeight="Medium" Text="Date Range" Margin="0,0,0,16"/>
+            <Border Margin="0,0,0,16"
+                    Padding="20"
+                    CornerRadius="10"
+                    BorderThickness="1"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
+                <StackPanel>
                     <Grid>
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="200"/>
-                            <ColumnDefinition Width="32"/>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="200"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="From:" VerticalAlignment="Center" Margin="0,0,12,0" FontSize="14"/>
-                        <DatePicker Grid.Column="1"/>
-                        <TextBlock Grid.Column="3" Text="To:" VerticalAlignment="Center" Margin="0,0,12,0" FontSize="14"/>
-                        <DatePicker Grid.Column="4"/>
+                        <CheckBox Grid.Column="0"
+                                  Content="Select all"
+                                  VerticalAlignment="Center"
+                                  IsChecked="{Binding SelectAll, Mode=TwoWay}"/>
+                        <ui:Button Grid.Column="1"
+                                   Content="Export Selected as Markdown"
+                                   Appearance="Primary"/>
                     </Grid>
                 </StackPanel>
-            </ui:Card>
+            </Border>
 
-            <ui:Card>
-                <StackPanel Margin="20">
-                    <TextBlock FontSize="16" FontWeight="Medium" Text="Export Options" Margin="0,0,0,16"/>
-                    <StackPanel>
-                        <ui:Button
-                            Content="Export Developer Diary"
-                            Icon="{ui:SymbolIcon DocumentText24}"
-                            Appearance="Primary"
-                            HorizontalAlignment="Stretch"
-                            HorizontalContentAlignment="Left"
-                            Padding="12,8"/>
-                        <TextBlock
-                            FontSize="12"
-                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="Bullet-only diary with date lines and daily summaries"
-                            Margin="16,0,0,16"/>
+            <Border Padding="20"
+                    CornerRadius="10"
+                    BorderThickness="1"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
+                <StackPanel>
+                    <TextBlock FontSize="16" FontWeight="SemiBold" Text="Sessions" Margin="0,0,0,12"/>
 
-                        <ui:Button
-                            Content="Export Resume Bullets"
-                            Icon="{ui:SymbolIcon DocumentBulletList24}"
-                            HorizontalAlignment="Stretch"
-                            HorizontalContentAlignment="Left"
-                            Padding="12,8"/>
-                        <TextBlock
-                            FontSize="12"
-                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="6-12 key bullets extracted from the selected range"
-                            Margin="16,0,0,16"/>
+                    <ItemsControl ItemsSource="{Binding Sessions}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="12"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
 
-                        <ui:Button
-                            Content="Export Session Archive"
-                            Icon="{ui:SymbolIcon Archive24}"
-                            HorizontalAlignment="Stretch"
-                            HorizontalContentAlignment="Left"
-                            Padding="12,8"/>
-                        <TextBlock
-                            FontSize="12"
-                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="JSON archive with session settings, summaries, and evidence"
-                            Margin="16,0,0,0"/>
-                    </StackPanel>
+                                    <CheckBox Grid.Column="0"
+                                              VerticalAlignment="Center"
+                                              IsChecked="{Binding IsSelected, Mode=TwoWay}"/>
+
+                                    <Border Grid.Column="2"
+                                            BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="8"
+                                            Padding="12">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="16"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <StackPanel Grid.Column="0">
+                                                <TextBlock FontSize="14"
+                                                           FontWeight="SemiBold"
+                                                           Text="{Binding Name}"/>
+                                                <TextBlock FontSize="12"
+                                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                           Text="{Binding RepoAndRange}"
+                                                           TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock FontSize="12"
+                                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                           Text="{Binding RepoPath}"
+                                                           TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock FontSize="12"
+                                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                           Text="{Binding CreatedAtDisplay}"
+                                                           Margin="0,2,0,0"/>
+                                            </StackPanel>
+
+                                            <Border Grid.Column="2"
+                                                    Background="#1F2329"
+                                                    CornerRadius="6"
+                                                    Padding="12">
+                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                    <ui:Button Content="Diary" Appearance="Primary" Padding="10,6" Margin="0,0,8,0"
+                                                               IsEnabled="{Binding IsSelected}"/>
+                                                    <ui:Button Content="Resume" Appearance="Secondary" Padding="10,6" Margin="0,0,8,0"
+                                                               IsEnabled="{Binding IsSelected}"/>
+                                                    <ui:Button Content="Archive" Appearance="Secondary" Padding="10,6"
+                                                               IsEnabled="{Binding IsSelected}"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                 </StackPanel>
-            </ui:Card>
+            </Border>
         </StackPanel>
     </ScrollViewer>
 </Page>
