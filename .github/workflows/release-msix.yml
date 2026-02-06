@@ -1,0 +1,100 @@
+name: release-msix
+
+on:
+  push:
+    tags:
+      - "v*"
+    branches:
+      - "main"
+  workflow_dispatch:
+
+jobs:
+  build-msix:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Resolve version
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path "DevChronicle.csproj" -Pattern "<Version>([^<]+)</Version>").Matches.Groups[1].Value
+          if (-not $version) { throw "Version not found in DevChronicle.csproj" }
+          $assembly = "$version.0"
+          "APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "ASSEMBLY_VERSION=$assembly" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Publish
+        run: dotnet publish DevChronicle.csproj -c Release -r win-x64 -p:PublishSingleFile=true -p:SelfContained=false -p:PublishReadyToRun=true -p:Version=$env:APP_VERSION -p:AssemblyVersion=$env:ASSEMBLY_VERSION -p:FileVersion=$env:ASSEMBLY_VERSION -p:OutDir=artifacts\publish\
+
+      - name: Prepare manifest and assets
+        shell: pwsh
+        run: |
+          $publishDir = Resolve-Path "artifacts/publish"
+          $assetsDir = Join-Path $publishDir "Assets"
+          New-Item -ItemType Directory -Force -Path $assetsDir | Out-Null
+
+          # Copy manifest
+          Copy-Item "build/msix/AppxManifest.xml" (Join-Path $publishDir "AppxManifest.xml") -Force
+
+          $version = "$env:ASSEMBLY_VERSION"
+          (Get-Content (Join-Path $publishDir "AppxManifest.xml")) `
+            -replace 'Version="[^"]+"', "Version=""$version""" `
+            | Set-Content (Join-Path $publishDir "AppxManifest.xml")
+
+          # Generate placeholder PNG assets if missing
+          Add-Type -AssemblyName System.Drawing
+          function New-Png([string]$path, [int]$size) {
+            $bmp = New-Object System.Drawing.Bitmap $size, $size
+            $gfx = [System.Drawing.Graphics]::FromImage($bmp)
+            $color = [System.Drawing.Color]::FromArgb(45, 50, 55)
+            $gfx.Clear($color)
+            $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
+            $gfx.Dispose()
+            $bmp.Dispose()
+          }
+
+          $square150 = Join-Path $assetsDir "Square150x150Logo.png"
+          $square44 = Join-Path $assetsDir "Square44x44Logo.png"
+          $storeLogo = Join-Path $assetsDir "StoreLogo.png"
+          if (-not (Test-Path $square150)) { New-Png $square150 150 }
+          if (-not (Test-Path $square44)) { New-Png $square44 44 }
+          if (-not (Test-Path $storeLogo)) { New-Png $storeLogo 50 }
+
+      - name: Package MSIX
+        shell: pwsh
+        run: |
+          $makeappx = Get-ChildItem "$env:ProgramFiles(x86)\Windows Kits\10" -Recurse -Filter makeappx.exe | Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $makeappx) { throw "makeappx.exe not found" }
+
+          $publishDir = Resolve-Path "artifacts/publish"
+          $msixPath = Resolve-Path "artifacts"
+          & $makeappx.FullName pack /d $publishDir /p (Join-Path $msixPath "DevChronicle.msix") /o
+
+      - name: Create self-signed cert and sign
+        shell: pwsh
+        run: |
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=DevChronicle" -CertStoreLocation "Cert:\CurrentUser\My"
+          $pwd = ConvertTo-SecureString -String "devchronicle" -Force -AsPlainText
+          $pfxPath = Join-Path (Resolve-Path "artifacts") "DevChronicle.pfx"
+          Export-PfxCertificate -Cert $cert -FilePath $pfxPath -Password $pwd | Out-Null
+
+          $signtool = Get-ChildItem "$env:ProgramFiles(x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe | Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $signtool) { throw "signtool.exe not found" }
+          & $signtool.FullName sign /fd SHA256 /f $pfxPath /p "devchronicle" (Join-Path (Resolve-Path "artifacts") "DevChronicle.msix")
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DevChronicle-msix
+          path: artifacts/DevChronicle.msix
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/DevChronicle.msix

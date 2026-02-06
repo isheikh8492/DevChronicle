@@ -13,6 +13,8 @@ The project is intentionally pragmatic:
 
 - What it does
 - How to build/run
+- Tests
+- CI/CD and versioning
 - Configuration and settings keys
 - Data storage (DB + logs)
 - UX walkthrough (Sessions, Session Detail, Export, Settings)
@@ -91,7 +93,7 @@ CD for MSIX:
 
 - `.github/workflows/release-msix.yml`: builds and packages an MSIX on tag pushes `vX.Y.Z`
 - Uses a **self-signed** certificate in CI (good for internal testing)
-- Output: `DevChronicle.msix` artifact
+- Output: `DevChronicle.msix` artifact and GitHub Release attachment
 
 To trigger a release:
 
@@ -99,6 +101,13 @@ To trigger a release:
 git tag v1.0.0
 git push origin v1.0.0
 ```
+
+## Versioning
+
+This project uses SemVer tags for releases:
+
+- Tag format: `vMAJOR.MINOR.PATCH`
+- MSIX and assembly versions are derived from the tag.
 
 ## MSIX notes
 
@@ -489,7 +498,6 @@ Key tables:
 ## Known limitations
 
 - Windows-first app; not cross-platform
-- no automated tests yet
 - unmanaged markdown is never edited in place
 - caching of summarization by input hash is not implemented yet (placeholder TODO exists)
 
@@ -516,10 +524,8 @@ Contributions are welcome.
 - Keep UI changes consistent with the existing WPF-UI visual language.
 - Avoid schema changes unless discussed first.
 
-If you’re making larger changes (export format/schema, mining strategy, or diary update rules), update the corresponding spec in `docs/`.
+If you're making larger changes (export format/schema, mining strategy, or diary update rules), update the corresponding spec in `docs/`.
 
 ## License
 
-This repository currently does not include a license file. By default, that means you should assume all rights are reserved.
-
-If you want this project to be open source, add a `LICENSE` file (common choice: MIT) and update this section to match.
+This project is licensed under the MIT License. See `LICENSE`.
