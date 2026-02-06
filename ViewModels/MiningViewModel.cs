@@ -163,21 +163,87 @@ public partial class MiningViewModel : ObservableObject
             return;
         }
 
-        SessionOptions options;
-        try
+        await RunMiningAllHistoryAsync();
+    }
+
+    public async Task RunMiningAllHistoryAsync()
+    {
+        if (IsMining) return;
+
+        var session = _sessionContext.CurrentSession;
+        if (session == null)
         {
-            options = string.IsNullOrEmpty(session.OptionsJson)
-                ? new SessionOptions()
-                : JsonSerializer.Deserialize<SessionOptions>(session.OptionsJson) ?? new SessionOptions();
-        }
-        catch (JsonException ex)
-        {
-            Status = $"Invalid session options JSON: {ex.Message}. Using defaults.";
-            options = new SessionOptions();
+            Status = "No session selected";
+            IsMining = false;
+            return;
         }
 
-        var windowDays = options.WindowSizeDays > 0 ? options.WindowSizeDays : 14;
-        await RunMiningAsync(windowDays);
+        IsMining = true;
+        Progress = 0;
+        _cancellationTokenSource = new CancellationTokenSource();
+
+        try
+        {
+            var options = await GetSessionOptionsAsync(session);
+            var authorFilters = GetAuthorFilters(session);
+
+            var progressReporter = new Progress<MiningProgress>(p =>
+            {
+                Status = p.Status;
+                if (p.TotalItems > 0)
+                    Progress = (double)p.ProcessedItems / p.TotalItems * 100;
+            });
+
+            Status = "Mining all history...";
+            var result = await RunMiningInBackgroundAsync(() => _miningService.MineCommitsAsync(
+                session.Id,
+                session.RepoPath,
+                null,
+                null,
+                options,
+                authorFilters,
+                progressReporter,
+                _cancellationTokenSource.Token));
+
+            DaysMined = result.DaysMined;
+            CommitsFound = result.TotalCommits;
+
+            if (result.Success)
+            {
+                Status = $"Complete! Mined {result.DaysMined} days, {result.StoredCommits} commits.";
+                Progress = 100;
+                MiningCompleted?.Invoke(this, EventArgs.Empty);
+            }
+            else
+            {
+                Status = $"Error: {result.ErrorMessage}";
+
+                System.Windows.MessageBox.Show(
+                    $"Mining failed:\n\n{result.ErrorMessage}\n\n" +
+                    $"Full Details:\n{result.ErrorDetails ?? "No additional details"}",
+                    "Mining Error",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Status = $"Unexpected error: {ex.Message}";
+
+            System.Windows.MessageBox.Show(
+                $"Unexpected mining error:\n\n{ex.Message}\n\n" +
+                $"Type: {ex.GetType().Name}\n\n" +
+                $"Stack Trace:\n{ex.StackTrace}",
+                "Unexpected Mining Error",
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Error);
+        }
+        finally
+        {
+            IsMining = false;
+            _cancellationTokenSource?.Dispose();
+            _cancellationTokenSource = null;
+        }
     }
 
     public async Task RunMiningRangeAsync(DateTime since, DateTime until, bool preferGaps = false)
