@@ -115,11 +115,21 @@
                         <StackPanel
                             Grid.Column="5"
                             Margin="0,10,0,0"
-                            Visibility="{Binding Summarization.IsSummarizing, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            Visibility="{Binding Summarization.ShowStatusPanel, Converter={StaticResource BooleanToVisibilityConverter}}">
                             <TextBlock
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                 Text="{Binding Summarization.Status}" />
+                            <TextBlock
+                                FontSize="11"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Text="{Binding Summarization.RecoverActionText}"
+                                Visibility="{Binding Summarization.HasRecoverableIssue, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <TextBlock
+                                FontSize="11"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Text="{Binding Summarization.ProgressCounterText}"
+                                Visibility="{Binding Summarization.HasProgressCounter, Converter={StaticResource BooleanToVisibilityConverter}}" />
                             <ProgressBar
                                 Height="4"
                                 Margin="0,6,0,0"

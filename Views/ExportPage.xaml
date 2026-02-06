@@ -306,7 +306,13 @@
                     <TextBlock
                         FontSize="11"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                        Text="{Binding ProgressCounterText}" />
+                        Text="{Binding RecoverActionText}"
+                        Visibility="{Binding HasRecoverableIssue, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <TextBlock
+                        FontSize="11"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Text="{Binding ProgressCounterText}"
+                        Visibility="{Binding HasProgressCounter, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <ProgressBar
                         Height="4"
                         Margin="0,6,0,0"
@@ -520,7 +526,13 @@
                     <TextBlock
                         FontSize="11"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                        Text="{Binding ProgressCounterText}" />
+                        Text="{Binding RecoverActionText}"
+                        Visibility="{Binding HasRecoverableIssue, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <TextBlock
+                        FontSize="11"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Text="{Binding ProgressCounterText}"
+                        Visibility="{Binding HasProgressCounter, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <ProgressBar
                         Height="4"
                         Margin="0,6,0,0"

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Windows;
@@ -45,6 +46,12 @@ public partial class ExportViewModel : ObservableObject
 
     [ObservableProperty]
     private bool isExporting;
+
+    [ObservableProperty]
+    private OperationState exportState = OperationState.Idle;
+
+    [ObservableProperty]
+    private string recoverActionText = string.Empty;
 
     [ObservableProperty]
     private int progressCurrentStep;
@@ -100,7 +107,10 @@ public partial class ExportViewModel : ObservableObject
     [ObservableProperty]
     private ObservableCollection<int> boundSessionIds = new();
 
+    public bool HasRecoverableIssue => !string.IsNullOrWhiteSpace(RecoverActionText);
     public bool IsProgressIndeterminate => IsBusy && ProgressTotalSteps <= 0;
+    public bool HasProgressCounter => ProgressTotalSteps > 0;
+    public bool ShowStatusPanel => IsBusy || ExportState != OperationState.Idle;
     public string ProgressCounterText => ProgressTotalSteps > 0 ? $"{ProgressCurrentStep}/{ProgressTotalSteps}" : string.Empty;
 
     public ExportViewModel(
@@ -146,6 +156,7 @@ public partial class ExportViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(CanConvertToManaged));
         OnPropertyChanged(nameof(IsProgressIndeterminate));
+        OnPropertyChanged(nameof(ShowStatusPanel));
     }
 
     partial void OnIsDiaryUnmanagedChanged(bool value)
@@ -159,12 +170,24 @@ public partial class ExportViewModel : ObservableObject
     partial void OnProgressCurrentStepChanged(int value)
     {
         OnPropertyChanged(nameof(ProgressCounterText));
+        OnPropertyChanged(nameof(HasProgressCounter));
     }
 
     partial void OnProgressTotalStepsChanged(int value)
     {
         OnPropertyChanged(nameof(ProgressCounterText));
+        OnPropertyChanged(nameof(HasProgressCounter));
         OnPropertyChanged(nameof(IsProgressIndeterminate));
+    }
+
+    partial void OnRecoverActionTextChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasRecoverableIssue));
+    }
+
+    partial void OnExportStateChanged(OperationState value)
+    {
+        OnPropertyChanged(nameof(ShowStatusPanel));
     }
 
     [RelayCommand]
@@ -229,6 +252,7 @@ public partial class ExportViewModel : ObservableObject
         DiaryPath = null;
         IsDiaryManaged = false;
         IsDiaryUnmanaged = false;
+        RecoverActionText = string.Empty;
     }
 
     [RelayCommand]
@@ -246,6 +270,7 @@ public partial class ExportViewModel : ObservableObject
         DiaryPath = null;
         IsDiaryManaged = false;
         IsDiaryUnmanaged = false;
+        RecoverActionText = string.Empty;
     }
 
     [RelayCommand]
@@ -280,13 +305,13 @@ public partial class ExportViewModel : ObservableObject
         var selectedIds = Sessions.Where(s => s.IsSelected).Select(s => s.Id).ToList();
         if (selectedIds.Count == 0)
         {
-            Status = "Select at least one session.";
+            RequireInput("Select at least one session.", "Select at least one session.");
             return;
         }
 
         if (string.IsNullOrWhiteSpace(OutputDirectory))
         {
-            Status = "Choose an output directory.";
+            RequireInput("Choose an output directory.", "Choose an output folder and retry.");
             return;
         }
 
@@ -302,8 +327,7 @@ public partial class ExportViewModel : ObservableObject
 
         IsBusy = true;
         IsExporting = true;
-        ResetProgress();
-        Status = "Exporting...";
+        BeginOperation("Exporting selected sessions");
         _cancellationTokenSource = new CancellationTokenSource();
         var progressReporter = CreateProgressReporter();
 
@@ -329,28 +353,26 @@ public partial class ExportViewModel : ObservableObject
 
             if (result.Canceled)
             {
-                Status = "Canceled.";
+                CancelOperation("Export canceled. No partial files were kept.");
                 return;
             }
 
             if (!result.Succeeded)
             {
-                Status = $"Export failed: {result.ErrorMessage}";
+                FailOperation($"Export failed: {result.ErrorMessage}", "Review output settings and retry.");
                 return;
             }
 
-            var files = result.FilesWritten.Select(Path.GetFileName).ToList();
-            Status = files.Count > 0
-                ? $"Exported: {string.Join(", ", files)}"
-                : "Export completed.";
+            var files = result.FilesWritten.Count;
+            CompleteOperation($"Export complete. {files} file(s) written.");
         }
         catch (OperationCanceledException)
         {
-            Status = "Canceled.";
+            CancelOperation("Export canceled. No partial files were kept.");
         }
         catch (Exception ex)
         {
-            Status = $"Export failed: {ex.Message}";
+            FailOperation($"Export failed: {ex.Message}", "Review output settings and retry.");
         }
         finally
         {
@@ -392,8 +414,7 @@ public partial class ExportViewModel : ObservableObject
             return;
 
         IsBusy = true;
-        ResetProgress();
-        Status = "Inspecting diary...";
+        BeginOperation("Inspecting diary");
         _cancellationTokenSource = new CancellationTokenSource();
         var progressReporter = CreateProgressReporter();
 
@@ -408,14 +429,14 @@ public partial class ExportViewModel : ObservableObject
 
             if (preview.Result.Canceled)
             {
-                Status = "Canceled.";
+                CancelOperation("Update canceled. Original diary unchanged.");
                 return;
             }
 
             if (!preview.Result.Succeeded)
             {
                 IsDiaryUnmanaged = true;
-                Status = preview.Result.ErrorMessage ?? "Diary is unmanaged.";
+                FailOperation("Selected file is not managed.", "Use Convert to managed, then Apply Update.");
                 return;
             }
 
@@ -424,15 +445,15 @@ public partial class ExportViewModel : ObservableObject
             foreach (var id in preview.BoundSessionIds)
                 BoundSessionIds.Add(id);
 
-            Status = preview.Diff.IsStale ? "Out of date." : "Up to date.";
+            CompleteOperation(preview.Diff.IsStale ? "Out of date." : "Up to date.");
         }
         catch (OperationCanceledException)
         {
-            Status = "Canceled.";
+            CancelOperation("Update canceled. Original diary unchanged.");
         }
         catch (Exception ex)
         {
-            Status = $"Failed to inspect diary: {ex.Message}";
+            FailOperation($"Update failed: {ex.Message}", "Choose a valid diary file and retry.");
         }
         finally
         {
@@ -450,13 +471,12 @@ public partial class ExportViewModel : ObservableObject
 
         if (string.IsNullOrWhiteSpace(DiaryPath))
         {
-            Status = "Choose a diary file first.";
+            RequireInput("Choose a diary file first.", "Browse for a diary file, then retry.");
             return;
         }
 
         IsBusy = true;
-        ResetProgress();
-        Status = "Updating diary...";
+        BeginOperation("Updating managed diary");
         _cancellationTokenSource = new CancellationTokenSource();
         var progressReporter = CreateProgressReporter();
 
@@ -471,26 +491,26 @@ public partial class ExportViewModel : ObservableObject
 
             if (result.Canceled)
             {
-                Status = "Canceled.";
+                CancelOperation("Update canceled. Original diary unchanged.");
                 return;
             }
 
             if (!result.Succeeded)
             {
-                Status = $"Update failed: {result.ErrorMessage}";
+                FailOperation($"Update failed: {result.ErrorMessage}", "Inspect the diary state and retry.");
                 return;
             }
 
             CurrentDiff = diff;
-            Status = "Diary updated.";
+            CompleteOperation("Diary updated successfully.");
         }
         catch (OperationCanceledException)
         {
-            Status = "Canceled.";
+            CancelOperation("Update canceled. Original diary unchanged.");
         }
         catch (Exception ex)
         {
-            Status = $"Update failed: {ex.Message}";
+            FailOperation($"Update failed: {ex.Message}", "Inspect the diary state and retry.");
         }
         finally
         {
@@ -508,20 +528,19 @@ public partial class ExportViewModel : ObservableObject
 
         if (string.IsNullOrWhiteSpace(DiaryPath))
         {
-            Status = "Choose a diary file first.";
+            RequireInput("Choose a diary file first.", "Browse for a diary file, then convert.");
             return;
         }
 
         var selectedIds = Sessions.Where(s => s.IsSelected).Select(s => s.Id).ToList();
         if (selectedIds.Count == 0)
         {
-            Status = "Select sessions to bind to the managed diary, then convert.";
+            RequireInput("Select sessions to bind, then convert.", "Select sessions to bind, then convert.");
             return;
         }
 
         IsBusy = true;
-        ResetProgress();
-        Status = "Converting to managed diary...";
+        BeginOperation("Converting diary to managed format");
         _cancellationTokenSource = new CancellationTokenSource();
         var progressReporter = CreateProgressReporter();
 
@@ -536,16 +555,16 @@ public partial class ExportViewModel : ObservableObject
                 progressReporter: progressReporter);
 
             DiaryPath = output;
-            Status = "Converted. Inspecting...";
+            CompleteOperation("Managed copy created and loaded.");
             await ComputeDiaryDiffAsync();
         }
         catch (OperationCanceledException)
         {
-            Status = "Canceled.";
+            CancelOperation("Conversion canceled. Source file unchanged.");
         }
         catch (Exception ex)
         {
-            Status = $"Convert failed: {ex.Message}";
+            FailOperation($"Conversion failed: {ex.Message}", "Review source file and session selection, then retry.");
         }
         finally
         {
@@ -606,7 +625,7 @@ public partial class ExportViewModel : ObservableObject
 
             if (diaryDialog.ShowDialog() != true)
             {
-                Status = "Canceled.";
+                RequireInput("No file selected.", string.Empty);
                 return;
             }
 
@@ -627,7 +646,7 @@ public partial class ExportViewModel : ObservableObject
 
             if (archiveDialog.ShowDialog() != true)
             {
-                Status = "Canceled.";
+                RequireInput("No file selected.", string.Empty);
                 return;
             }
 
@@ -640,14 +659,13 @@ public partial class ExportViewModel : ObservableObject
 
         if (string.IsNullOrWhiteSpace(exportDirectory))
         {
-            Status = "Invalid export destination.";
+            RequireInput("Invalid export destination.", "Choose a valid destination and retry.");
             return;
         }
 
         IsBusy = true;
         IsExporting = true;
-        ResetProgress();
-        Status = $"Exporting session {session.Id}...";
+        BeginOperation($"Exporting session {session.Id}");
         _cancellationTokenSource = new CancellationTokenSource();
         var progressReporter = CreateProgressReporter();
 
@@ -678,28 +696,25 @@ public partial class ExportViewModel : ObservableObject
 
             if (result.Canceled)
             {
-                Status = "Canceled.";
+                CancelOperation("Session export canceled.");
                 return;
             }
 
             if (!result.Succeeded)
             {
-                Status = $"Export failed: {result.ErrorMessage}";
+                FailOperation($"Session export failed: {result.ErrorMessage}", "Review destination and retry.");
                 return;
             }
 
-            var files = result.FilesWritten.Select(Path.GetFileName).ToList();
-            Status = files.Count > 0
-                ? $"Exported: {string.Join(", ", files)}"
-                : "Export completed.";
+            CompleteOperation("Session export complete.");
         }
         catch (OperationCanceledException)
         {
-            Status = "Canceled.";
+            CancelOperation("Session export canceled.");
         }
         catch (Exception ex)
         {
-            Status = $"Export failed: {ex.Message}";
+            FailOperation($"Session export failed: {ex.Message}", "Review destination and retry.");
         }
         finally
         {
@@ -756,18 +771,64 @@ public partial class ExportViewModel : ObservableObject
         ProgressPercent = 0;
     }
 
+    private void BeginOperation(string verb)
+    {
+        ExportState = OperationState.Running;
+        RecoverActionText = string.Empty;
+        ResetProgress();
+        Status = OperationStatusFormatter.FormatProgress(verb, 0, 0);
+    }
+
+    private void CompleteOperation(string successMessage)
+    {
+        ExportState = OperationState.Success;
+        RecoverActionText = string.Empty;
+        Status = OperationStatusFormatter.FormatTerminal(OperationState.Success, successMessage);
+    }
+
+    private void CancelOperation(string cancelMessage)
+    {
+        ExportState = OperationState.Canceled;
+        RecoverActionText = string.Empty;
+        Status = OperationStatusFormatter.FormatTerminal(OperationState.Canceled, cancelMessage);
+    }
+
+    private void FailOperation(string errorMessage, string recoverAction)
+    {
+        ExportState = OperationState.Error;
+        RecoverActionText = recoverAction;
+        Status = OperationStatusFormatter.FormatTerminal(OperationState.Error, errorMessage);
+    }
+
+    private void RequireInput(string message, string recoverAction)
+    {
+        ExportState = OperationState.NeedsInput;
+        RecoverActionText = recoverAction;
+        Status = OperationStatusFormatter.FormatTerminal(OperationState.NeedsInput, message);
+    }
+
     private IProgress<ExportProgress> CreateProgressReporter()
     {
         return new Progress<ExportProgress>(p =>
         {
-            if (!string.IsNullOrWhiteSpace(p.Status))
-                Status = p.Status;
+            var current = Math.Max(0, p.CurrentStep);
+            var total = Math.Max(0, p.TotalSteps);
+            if (total > 0 && current > total)
+            {
+                Debug.WriteLine($"[ExportProgress] Invalid progress pair emitted: {current}/{total}. Clamping.");
+                current = total;
+            }
 
-            ProgressCurrentStep = Math.Max(0, p.CurrentStep);
-            ProgressTotalSteps = Math.Max(0, p.TotalSteps);
+            ProgressCurrentStep = current;
+            ProgressTotalSteps = total;
             ProgressPercent = ProgressTotalSteps > 0
                 ? Math.Clamp((double)ProgressCurrentStep / ProgressTotalSteps * 100, 0, 100)
                 : 0;
+
+            if (!string.IsNullOrWhiteSpace(p.Status))
+            {
+                Status = p.Status;
+            }
         });
     }
 }
