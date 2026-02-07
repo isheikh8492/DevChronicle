@@ -45,6 +45,12 @@ public partial class SettingsViewModel : ObservableObject
     private string masterPromptText = string.Empty;
 
     [ObservableProperty]
+    private int summarizationMaxCompletionTokensPerCall;
+
+    [ObservableProperty]
+    private int summarizationMaxTotalBulletsPerDay;
+
+    [ObservableProperty]
     private string defaultExportDirectory = string.Empty;
 
     private string _actualApiKey = string.Empty;
@@ -66,6 +72,8 @@ public partial class SettingsViewModel : ObservableObject
         BackfillOrder = await _settingsService.GetAsync(SettingsService.MiningBackfillOrderKey, "OldestFirst");
         _actualApiKey = await _settingsService.GetAsync(SettingsService.OpenAiApiKeyKey, string.Empty);
         MasterPromptText = await _settingsService.GetAsync(SettingsService.SummarizationMasterPromptKey, string.Empty);
+        SummarizationMaxCompletionTokensPerCall = await _settingsService.GetAsync(SettingsService.SummarizationMaxCompletionTokensPerCallKey, 3000);
+        SummarizationMaxTotalBulletsPerDay = await _settingsService.GetAsync(SettingsService.SummarizationMaxTotalBulletsPerDayKey, 40);
         var fallbackExportDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "DevChronicleExports");
         DefaultExportDirectory = await _settingsService.GetAsync(SettingsService.ExportDefaultDirectoryKey, fallbackExportDir);
         UpdateDisplayedApiKey();
@@ -111,6 +119,9 @@ public partial class SettingsViewModel : ObservableObject
     partial void OnFillGapsFirstChanged(bool value) => _ = _settingsService.SetAsync(SettingsService.MiningFillGapsFirstKey, value);
     partial void OnBackfillOrderChanged(string value) => _ = _settingsService.SetAsync(SettingsService.MiningBackfillOrderKey, value);
     partial void OnDefaultExportDirectoryChanged(string value) => _ = _settingsService.SetAsync(SettingsService.ExportDefaultDirectoryKey, value ?? string.Empty);
+
+    partial void OnSummarizationMaxCompletionTokensPerCallChanged(int value) => _ = _settingsService.SetAsync(SettingsService.SummarizationMaxCompletionTokensPerCallKey, value);
+    partial void OnSummarizationMaxTotalBulletsPerDayChanged(int value) => _ = _settingsService.SetAsync(SettingsService.SummarizationMaxTotalBulletsPerDayKey, value);
 
     public async Task SaveApiKeyAsync(string newApiKey)
     {

@@ -90,6 +90,58 @@
             <ui:Card Margin="0,0,0,16">
                 <StackPanel Margin="20">
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                        <ui:SymbolIcon Symbol="Settings24" FontSize="20" Margin="0,0,12,0"/>
+                        <TextBlock FontSize="16" FontWeight="Medium" Text="Summarization Limits" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <TextBlock
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Text="These control output length and the continuation behavior when a response hits the token limit."
+                        Margin="0,0,0,12"/>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="16"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0"
+                                Padding="10"
+                                CornerRadius="6"
+                                BorderThickness="1"
+                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
+                            <StackPanel>
+                                <TextBlock Text="Max tokens per call" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,6"/>
+                                <ui:NumberBox Value="{Binding SummarizationMaxCompletionTokensPerCall, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                              Minimum="256"
+                                              Maximum="8000"
+                                              SpinButtonPlacementMode="Inline"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Column="2"
+                                Padding="10"
+                                CornerRadius="6"
+                                BorderThickness="1"
+                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
+                            <StackPanel>
+                                <TextBlock Text="Max total bullets/day" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,6"/>
+                                <ui:NumberBox Value="{Binding SummarizationMaxTotalBulletsPerDay, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                              Minimum="1"
+                                              Maximum="200"
+                                              SpinButtonPlacementMode="Inline"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </StackPanel>
+            </ui:Card>
+
+            <ui:Card Margin="0,0,0,16">
+                <StackPanel Margin="20">
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
                         <ui:SymbolIcon Symbol="TextT24" FontSize="20" Margin="0,0,12,0"/>
                         <TextBlock FontSize="16" FontWeight="Medium" Text="Summarization Master Prompt" VerticalAlignment="Center"/>
                     </StackPanel>

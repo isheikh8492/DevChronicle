@@ -13,6 +13,8 @@ public class SettingsService
     public const string IncludeDiffsKey = "summarization.include_diffs";
     public const string MaxBulletsPerDayKey = "summarization.max_bullets_per_day";
     public const string SummarizationMasterPromptKey = "summarization.master_prompt";
+    public const string SummarizationMaxCompletionTokensPerCallKey = "summarization.max_completion_tokens_per_call";
+    public const string SummarizationMaxTotalBulletsPerDayKey = "summarization.max_total_bullets_per_day";
     public const string OpenAiApiKeyKey = "openai.api_key";
     public const string ExportDefaultDirectoryKey = "export.default_directory";
 

@@ -83,6 +83,11 @@ If the app is running and locks `DevChronicle.exe`, use an alternate output fold
 dotnet test Tests/DevChronicle.Tests/DevChronicle.Tests.csproj -p:OutDir=artifacts\tmpbuild\
 ```
 
+Test isolation:
+
+- Unit tests use an isolated temp SQLite database (see `Tests/DevChronicle.Tests/TestDb.cs`) and do not write to the app DB under `%LocalAppData%`.
+- `DatabaseService` supports an optional `dbPath` parameter for callers that need explicit DB placement (tests, future integration tooling).
+
 ## CI/CD
 
 CI runs on GitHub Actions:

@@ -14,6 +14,9 @@ public class SummarizationService
     private readonly SettingsService _settingsService;
     private string _modelName = "gpt-4o-mini";
     private const string PromptVersion = "v1";
+    private const int DefaultMaxCompletionTokensPerCall = 3000;
+    private const int DefaultMaxTotalBullets = 40;
+    private const int MaxContinuationParts = 4;
     private const string DefaultMasterPrompt =
         "You are a concise developer diary generator. Output ONLY bullet points that start with '- '.";
     private static readonly HttpClient Http = new HttpClient
@@ -80,7 +83,23 @@ public class SummarizationService
             }
 
             var masterPrompt = await GetMasterPromptAsync();
-            bulletsText = await CallOpenAIAsync(masterPrompt, prompt, apiKey, cancellationToken);
+            var maxCompletionTokensPerCall = await _settingsService.GetAsync(
+                SettingsService.SummarizationMaxCompletionTokensPerCallKey,
+                DefaultMaxCompletionTokensPerCall);
+            var maxTotalBullets = await _settingsService.GetAsync(
+                SettingsService.SummarizationMaxTotalBulletsPerDayKey,
+                DefaultMaxTotalBullets);
+
+            maxCompletionTokensPerCall = Clamp(maxCompletionTokensPerCall, min: 256, max: 8000);
+            maxTotalBullets = Clamp(maxTotalBullets, min: 1, max: 200);
+
+            bulletsText = await CallOpenAIWithContinuationAsync(
+                masterPrompt,
+                prompt,
+                apiKey,
+                maxBullets: Math.Min(maxBullets, maxTotalBullets),
+                maxCompletionTokensPerCall: maxCompletionTokensPerCall,
+                cancellationToken);
             result.UsedAI = true;
 
             // Validate and clean bullets
@@ -162,7 +181,7 @@ public class SummarizationService
                 new { role = "user", content = prompt }
             },
             temperature = 0.2,
-            max_completion_tokens = 600,
+            max_completion_tokens = DefaultMaxCompletionTokensPerCall,
             store = false
         };
 
@@ -183,6 +202,153 @@ public class SummarizationService
             .GetString();
 
         return content ?? string.Empty;
+    }
+
+    private async Task<string> CallOpenAIWithContinuationAsync(
+        string masterPrompt,
+        string prompt,
+        string apiKey,
+        int maxBullets,
+        int maxCompletionTokensPerCall,
+        CancellationToken cancellationToken)
+    {
+        // Most days should fit in one response, but long diaries can hit token caps.
+        // If the model stops due to length, ask it to continue and return only new bullets.
+        var allBullets = new List<string>();
+        var lastFinishReason = string.Empty;
+        string? pendingPartialBullet = null;
+
+        for (var part = 0; part < MaxContinuationParts && allBullets.Count < maxBullets; part++)
+        {
+            var remaining = maxBullets - allBullets.Count;
+            var continuationPrompt = part == 0
+                ? prompt
+                : pendingPartialBullet != null
+                    ? BuildContinuationPromptWithPartial(prompt, allBullets, pendingPartialBullet, remaining)
+                    : BuildContinuationPrompt(prompt, allBullets, remaining);
+
+            var call = await CallOpenAIInternalAsync(
+                masterPrompt,
+                continuationPrompt,
+                apiKey,
+                maxCompletionTokensPerCall,
+                cancellationToken);
+
+            lastFinishReason = call.FinishReason ?? string.Empty;
+
+            // If we hit the token limit, the last bullet may be cut mid-sentence. Capture it so we can ask the
+            // model to finish it first on the next continuation call.
+            if (string.Equals(lastFinishReason, "length", StringComparison.OrdinalIgnoreCase))
+                pendingPartialBullet = ExtractLastBulletLine(call.Content);
+            else
+                pendingPartialBullet = null;
+
+            var newBullets = ValidateBullets(call.Content, remaining);
+
+            // If we captured a "possibly partial" last bullet line, don't persist it from this chunk; we'll ask the
+            // model to re-emit it completed next time.
+            if (pendingPartialBullet != null && newBullets.Count > 0)
+            {
+                var last = newBullets[^1];
+                if (string.Equals(last, pendingPartialBullet, StringComparison.OrdinalIgnoreCase))
+                    newBullets.RemoveAt(newBullets.Count - 1);
+            }
+
+            var appended = AppendUniqueBullets(allBullets, newBullets);
+
+            // If we didn't extract any new bullets, continuing won't help.
+            if (appended == 0)
+                break;
+
+            // Only continue if we know we were cut off by length.
+            if (!string.Equals(lastFinishReason, "length", StringComparison.OrdinalIgnoreCase))
+                break;
+        }
+
+        // Fall back to raw content if parsing failed unexpectedly.
+        if (allBullets.Count == 0)
+            return (await CallOpenAIInternalAsync(masterPrompt, prompt, apiKey, maxCompletionTokensPerCall, cancellationToken)).Content;
+
+        return string.Join("\n", allBullets);
+    }
+
+    private static string BuildContinuationPrompt(string originalPrompt, List<string> bulletsSoFar, int remaining)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine(originalPrompt);
+        sb.AppendLine();
+        sb.AppendLine("Already generated bullets (do not repeat these):");
+        foreach (var b in bulletsSoFar)
+            sb.AppendLine(b);
+        sb.AppendLine();
+        sb.AppendLine($"Continue with {remaining} more bullets.");
+        sb.AppendLine("Output ONLY new bullet points that start with '- '.");
+        sb.AppendLine("Do not repeat earlier bullets. Do not add headings or paragraphs.");
+        return sb.ToString();
+    }
+
+    private static string BuildContinuationPromptWithPartial(string originalPrompt, List<string> bulletsSoFar, string partialBullet, int remaining)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine(originalPrompt);
+        sb.AppendLine();
+        sb.AppendLine("Already generated bullets (do not repeat these):");
+        foreach (var b in bulletsSoFar)
+            sb.AppendLine(b);
+        sb.AppendLine();
+        sb.AppendLine("The last response was truncated mid-bullet.");
+        sb.AppendLine("First: output 1 bullet that completes the following partial bullet.");
+        sb.AppendLine("That first bullet MUST start exactly with this text (including '- '):");
+        sb.AppendLine(partialBullet);
+        sb.AppendLine();
+        if (remaining > 1)
+            sb.AppendLine($"Then: output up to {remaining - 1} additional new bullets.");
+        else
+            sb.AppendLine("Then: stop (no additional bullets).");
+        sb.AppendLine("Output ONLY bullet points that start with '- '.");
+        sb.AppendLine("Do not repeat earlier bullets. Do not add headings or paragraphs.");
+        return sb.ToString();
+    }
+
+    private static string? ExtractLastBulletLine(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+            return null;
+
+        // Find the last line that looks like a bullet start. When the model is truncated, this tends to be the
+        // partial bullet we want to complete.
+        var lines = content.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        for (var i = lines.Length - 1; i >= 0; i--)
+        {
+            var trimmed = lines[i].TrimEnd('\r').Trim();
+            if (trimmed.StartsWith("- ", StringComparison.Ordinal))
+                return trimmed;
+        }
+
+        return null;
+    }
+
+    private static int AppendUniqueBullets(List<string> destination, List<string> toAppend)
+    {
+        var seen = new HashSet<string>(destination, StringComparer.OrdinalIgnoreCase);
+        var appended = 0;
+        foreach (var bullet in toAppend)
+        {
+            if (seen.Add(bullet))
+            {
+                destination.Add(bullet);
+                appended++;
+            }
+        }
+
+        return appended;
+    }
+
+    private static int Clamp(int value, int min, int max)
+    {
+        if (value < min) return min;
+        if (value > max) return max;
+        return value;
     }
 
     private string GenerateOfflineSummary(List<Commit> commits, List<WorkUnit> workUnits)
@@ -218,6 +384,46 @@ public class SummarizationService
         }
 
         return bullets;
+    }
+
+    private async Task<OpenAiChatResult> CallOpenAIInternalAsync(
+        string masterPrompt,
+        string prompt,
+        string apiKey,
+        int maxCompletionTokens,
+        CancellationToken cancellationToken)
+    {
+        var payload = new
+        {
+            model = _modelName,
+            messages = new[]
+            {
+                new { role = "developer", content = masterPrompt },
+                new { role = "user", content = prompt }
+            },
+            temperature = 0.2,
+            max_completion_tokens = maxCompletionTokens,
+            store = false
+        };
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "chat/completions");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+        request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+        using var response = await Http.SendAsync(request, cancellationToken);
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"OpenAI API error: {response.StatusCode} - {json}");
+
+        using var doc = JsonDocument.Parse(json);
+        var choice0 = doc.RootElement.GetProperty("choices")[0];
+        var content = choice0.GetProperty("message").GetProperty("content").GetString() ?? string.Empty;
+
+        string? finishReason = null;
+        if (choice0.TryGetProperty("finish_reason", out var finishReasonProp) && finishReasonProp.ValueKind == JsonValueKind.String)
+            finishReason = finishReasonProp.GetString();
+
+        return new OpenAiChatResult(content, finishReason);
     }
 
     private async Task<string?> GetApiKeyAsync()
@@ -276,6 +482,8 @@ public class SummarizationService
         return Convert.ToHexString(hashBytes);
     }
 }
+
+internal sealed record OpenAiChatResult(string Content, string? FinishReason);
 
 public class SummarizationResult
 {
