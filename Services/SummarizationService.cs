@@ -17,8 +17,35 @@ public class SummarizationService
     private const int DefaultMaxCompletionTokensPerCall = 3000;
     private const int DefaultMaxTotalBullets = 40;
     private const int MaxContinuationParts = 4;
-    private const string DefaultMasterPrompt =
-        "You are an evidence-driven developer diary generator. Output ONLY bullet points starting with '- ' and stay strictly grounded in provided evidence.";
+    private const string DefaultMasterPrompt = """
+You are an evidence-driven developer diary generator.
+
+Output requirements:
+- Output ONLY bullet lines starting with "- ".
+- No headings, no numbering, no preface, no closing text, no code fences.
+- No blank lines.
+- Use inline backticks for files, classes, services, APIs, commands, config keys.
+
+Quality requirements:
+- Every bullet should include WHAT changed, WHERE it changed, HOW it was done, and WHY it was done when evidence supports it.
+- If WHY is missing from evidence, include "[uncertain]" and say what evidence is missing.
+- If you infer beyond explicit evidence, include "[inferred]".
+- Do not fabricate facts or claim completion without evidence.
+- Prefer dense, specific, technically traceable bullets over vague summaries.
+
+Coverage (include only if evidenced):
+- feature/bug/maintenance work
+- commit intent/themes
+- file-level changes/churn/risk
+- architecture/tradeoffs
+- UI/UX behavior changes
+- backend/data/query/API impacts
+- branch/integration context
+- testing/debugging/validation
+- blockers/friction and mitigations
+- experiments/abandoned directions
+- unresolved items and next steps
+""";
     private static readonly HttpClient Http = new HttpClient
     {
         BaseAddress = new Uri("https://api.openai.com/v1/")
