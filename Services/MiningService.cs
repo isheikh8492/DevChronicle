@@ -73,12 +73,13 @@ public class MiningService
                 normalizedStart,
                 endExclusive,
                 authorFilters,
+                options.IdentityMatchMode,
                 options.RefScope,
                 includeMergesForMining,
                 knownShas);
 
             var parsedBySha = parsedCommits.ToDictionary(p => p.Commit.Sha, StringComparer.OrdinalIgnoreCase);
-            var reflogShas = await _gitService.GetReflogCommitsAsync(repoPath, normalizedStart, endExclusive);
+            var reflogShas = await _gitService.GetReflogCommitsAsync(repoPath, normalizedStart, endExclusive, authorFilters, options.IdentityMatchMode);
             var missingReflogShas = reflogShas
                 .Where(sha => !parsedBySha.ContainsKey(sha))
                 .ToList();
@@ -89,6 +90,16 @@ public class MiningService
                 var reflogCommits = await _gitService.GetCommitsByShasWithNumstatAsync(repoPath, sessionId, missingReflogShas);
                 foreach (var parsed in reflogCommits)
                 {
+                    // Defense-in-depth: reflog is about local history, not authorship. Enforce author filter here too.
+                    if (!IdentityFiltersMatch(parsed.Commit, authorFilters, options.IdentityMatchMode))
+                        continue;
+
+                    // Keep UI/aggregation consistent: sessions are day-grouped by AuthorDate.
+                    if (normalizedStart.HasValue && parsed.Commit.AuthorDate < normalizedStart.Value)
+                        continue;
+                    if (endExclusive.HasValue && parsed.Commit.AuthorDate >= endExclusive.Value)
+                        continue;
+
                     parsedCommits.Add(parsed);
                     parsedBySha[parsed.Commit.Sha] = parsed;
                 }
@@ -403,6 +414,53 @@ public class MiningService
         }
 
         return result;
+    }
+
+    private static bool IdentityFiltersMatch(Commit commit, List<AuthorFilter>? authorFilters, IdentityMatchMode mode)
+    {
+        if (authorFilters == null || authorFilters.Count == 0)
+            return true;
+
+        foreach (var filter in authorFilters)
+        {
+            if (!string.IsNullOrWhiteSpace(filter.Email))
+            {
+                var email = filter.Email.Trim();
+
+                if (mode == IdentityMatchMode.AuthorOnly || mode == IdentityMatchMode.AuthorOrCommitter)
+                {
+                    if (string.Equals(commit.AuthorEmail, email, StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+
+                if (mode == IdentityMatchMode.CommitterOnly || mode == IdentityMatchMode.AuthorOrCommitter)
+                {
+                    if (string.Equals(commit.CommitterEmail, email, StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(filter.Name))
+            {
+                var name = filter.Name.Trim();
+
+                if (mode == IdentityMatchMode.AuthorOnly || mode == IdentityMatchMode.AuthorOrCommitter)
+                {
+                    if (string.Equals(commit.AuthorName, name, StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+
+                if (mode == IdentityMatchMode.CommitterOnly || mode == IdentityMatchMode.AuthorOrCommitter)
+                {
+                    if (string.Equals(commit.CommitterName, name, StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+            }
+        }
+
+        return false;
     }
 }
 

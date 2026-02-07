@@ -25,6 +25,7 @@ public class SessionOptions
     public bool FillGapsFirst { get; set; }
     public RefScope RefScope { get; set; } = RefScope.LocalBranchesOnly;
     public bool TrackIntegrations { get; set; } = true;
+    public IdentityMatchMode IdentityMatchMode { get; set; } = IdentityMatchMode.AuthorOnly;
 }
 
 public enum RefScope
@@ -32,6 +33,13 @@ public enum RefScope
     LocalBranchesOnly = 0,
     LocalPlusRemotes = 1,
     AllRefs = 2
+}
+
+public enum IdentityMatchMode
+{
+    AuthorOnly = 0,
+    CommitterOnly = 1,
+    AuthorOrCommitter = 2
 }
 
 public class AuthorFilter

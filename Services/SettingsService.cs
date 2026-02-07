@@ -57,7 +57,8 @@ public class SettingsService
             OverlapDays = await GetAsync(MiningOverlapDaysKey, 1),
             FillGapsFirst = await GetAsync(MiningFillGapsFirstKey, false),
             RefScope = RefScope.LocalBranchesOnly,
-            TrackIntegrations = true
+            TrackIntegrations = true,
+            IdentityMatchMode = IdentityMatchMode.AuthorOrCommitter
         };
 
         return options;

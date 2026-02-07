@@ -11,6 +11,60 @@ public class GitService
 {
     private const string CommitPrefix = "COMMIT|";
 
+    private static string BuildGitAuthorArg(AuthorFilter filter)
+    {
+        if (!string.IsNullOrWhiteSpace(filter.Email))
+        {
+            // `--author` is a regex matched against "Name <email>". Treat input literally.
+            // Wrapping with angle brackets makes "email" match only the email portion.
+            var email = GitAuthorRegex.EscapeLiteral(filter.Email.Trim());
+            return $" --author=\"<{email}>\"";
+        }
+
+        if (!string.IsNullOrWhiteSpace(filter.Name))
+        {
+            var name = GitAuthorRegex.EscapeLiteral(filter.Name.Trim());
+            return $" --author=\"{name}\"";
+        }
+
+        return string.Empty;
+    }
+
+    private static string BuildGitCommitterArg(AuthorFilter filter)
+    {
+        if (!string.IsNullOrWhiteSpace(filter.Email))
+        {
+            var email = GitAuthorRegex.EscapeLiteral(filter.Email.Trim());
+            return $" --committer=\"<{email}>\"";
+        }
+
+        if (!string.IsNullOrWhiteSpace(filter.Name))
+        {
+            var name = GitAuthorRegex.EscapeLiteral(filter.Name.Trim());
+            return $" --committer=\"{name}\"";
+        }
+
+        return string.Empty;
+    }
+
+    private static string BuildIdentityArg(AuthorFilter filter, IdentityMatchMode mode) =>
+        mode switch
+        {
+            IdentityMatchMode.CommitterOnly => BuildGitCommitterArg(filter),
+            _ => BuildGitAuthorArg(filter)
+        };
+
+    private static void AppendIdentityFilters(StringBuilder args, List<AuthorFilter>? filters, IdentityMatchMode mode)
+    {
+        if (filters == null || filters.Count == 0)
+            return;
+
+        foreach (var filter in filters)
+        {
+            args.Append(BuildIdentityArg(filter, mode));
+        }
+    }
+
     public async Task<bool> IsValidRepositoryAsync(string repoPath)
     {
         if (!Directory.Exists(repoPath))
@@ -31,6 +85,7 @@ public class GitService
         DateTime? since = null,
         DateTime? until = null,
         List<AuthorFilter>? authorFilters = null,
+        IdentityMatchMode identityMatchMode = IdentityMatchMode.AuthorOnly,
         bool includeMerges = false)
     {
         var args = new StringBuilder("log --all --pretty=format:%H|%aI|%an|%ae|%s");
@@ -44,16 +99,7 @@ public class GitService
         if (until.HasValue)
             args.Append($" --until=\"{until.Value:yyyy-MM-dd}\"");
 
-        if (authorFilters != null && authorFilters.Count > 0)
-        {
-            foreach (var filter in authorFilters)
-            {
-                if (!string.IsNullOrWhiteSpace(filter.Email))
-                    args.Append($" --author=\"{filter.Email}\"");
-                else if (!string.IsNullOrWhiteSpace(filter.Name))
-                    args.Append($" --author=\"{filter.Name}\"");
-            }
-        }
+        AppendIdentityFilters(args, authorFilters, identityMatchMode);
 
         var result = await RunGitCommandAsync(repoPath, args.ToString());
         if (!result.Success)
@@ -98,9 +144,73 @@ public class GitService
         DateTime? since,
         DateTime? until,
         List<AuthorFilter>? authorFilters,
+        IdentityMatchMode identityMatchMode,
         RefScope refScope,
         bool includeMerges,
         HashSet<string>? knownShas = null)
+    {
+        if (identityMatchMode == IdentityMatchMode.AuthorOrCommitter && authorFilters != null && authorFilters.Count > 0)
+        {
+            var author = await GetCommitsWithNumstatCoreAsync(
+                repoPath,
+                sessionId,
+                since,
+                until,
+                authorFilters,
+                IdentityMatchMode.AuthorOnly,
+                refScope,
+                includeMerges,
+                knownShas);
+
+            var committer = await GetCommitsWithNumstatCoreAsync(
+                repoPath,
+                sessionId,
+                since,
+                until,
+                authorFilters,
+                IdentityMatchMode.CommitterOnly,
+                refScope,
+                includeMerges,
+                knownShas);
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var merged = new List<ParsedCommit>(author.Count + committer.Count);
+            foreach (var p in author)
+            {
+                if (seen.Add(p.Commit.Sha))
+                    merged.Add(p);
+            }
+            foreach (var p in committer)
+            {
+                if (seen.Add(p.Commit.Sha))
+                    merged.Add(p);
+            }
+
+            return merged;
+        }
+
+        return await GetCommitsWithNumstatCoreAsync(
+            repoPath,
+            sessionId,
+            since,
+            until,
+            authorFilters,
+            identityMatchMode,
+            refScope,
+            includeMerges,
+            knownShas);
+    }
+
+    private async Task<List<ParsedCommit>> GetCommitsWithNumstatCoreAsync(
+        string repoPath,
+        int sessionId,
+        DateTime? since,
+        DateTime? until,
+        List<AuthorFilter>? authorFilters,
+        IdentityMatchMode identityMatchMode,
+        RefScope refScope,
+        bool includeMerges,
+        HashSet<string>? knownShas)
     {
         var args = new StringBuilder("log ");
         args.Append(GetRefScopeArgs(refScope));
@@ -115,16 +225,7 @@ public class GitService
         if (until.HasValue)
             args.Append($" --until=\"{until.Value:yyyy-MM-ddTHH:mm:ss}\"");
 
-        if (authorFilters != null && authorFilters.Count > 0)
-        {
-            foreach (var filter in authorFilters)
-            {
-                if (!string.IsNullOrWhiteSpace(filter.Email))
-                    args.Append($" --author=\"{filter.Email}\"");
-                else if (!string.IsNullOrWhiteSpace(filter.Name))
-                    args.Append($" --author=\"{filter.Name}\"");
-            }
-        }
+        AppendIdentityFilters(args, authorFilters, identityMatchMode);
 
         var result = await RunGitCommandAsync(repoPath, args.ToString());
         if (!result.Success)
@@ -241,7 +342,29 @@ public class GitService
         return ParseCommitsWithNumstatOutput(result.Output, sessionId, null);
     }
 
-    public async Task<List<string>> GetReflogCommitsAsync(string repoPath, DateTime? since, DateTime? until)
+    public async Task<List<string>> GetReflogCommitsAsync(
+        string repoPath,
+        DateTime? since,
+        DateTime? until,
+        List<AuthorFilter>? authorFilters = null,
+        IdentityMatchMode identityMatchMode = IdentityMatchMode.AuthorOnly)
+    {
+        if (identityMatchMode == IdentityMatchMode.AuthorOrCommitter && authorFilters != null && authorFilters.Count > 0)
+        {
+            var author = await GetReflogCommitsCoreAsync(repoPath, since, until, authorFilters, IdentityMatchMode.AuthorOnly);
+            var committer = await GetReflogCommitsCoreAsync(repoPath, since, until, authorFilters, IdentityMatchMode.CommitterOnly);
+            return author.Concat(committer).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        }
+
+        return await GetReflogCommitsCoreAsync(repoPath, since, until, authorFilters, identityMatchMode);
+    }
+
+    private async Task<List<string>> GetReflogCommitsCoreAsync(
+        string repoPath,
+        DateTime? since,
+        DateTime? until,
+        List<AuthorFilter>? authorFilters,
+        IdentityMatchMode identityMatchMode)
     {
         var args = new StringBuilder("log -g --all --pretty=format:%H");
 
@@ -250,6 +373,8 @@ public class GitService
 
         if (until.HasValue)
             args.Append($" --until=\"{until.Value:yyyy-MM-ddTHH:mm:ss}\"");
+
+        AppendIdentityFilters(args, authorFilters, identityMatchMode);
 
         var result = await RunGitCommandAsync(repoPath, args.ToString());
         if (!result.Success)
@@ -591,6 +716,30 @@ public class GitService
         FinalizeCurrent();
         return parsed;
     }
+}
+
+public static class GitAuthorRegex
+{
+    // Conservative escaping for git's `--author` regex (works for both BRE/ERE usage).
+    // Git matches this regex against "Name <email>".
+    public static string EscapeLiteral(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return string.Empty;
+
+        var sb = new StringBuilder(value.Length);
+        foreach (var c in value)
+        {
+            if (IsRegexMeta(c))
+                sb.Append('\\');
+            sb.Append(c);
+        }
+
+        return sb.ToString();
+    }
+
+    private static bool IsRegexMeta(char c) =>
+        c is '\\' or '.' or '^' or '$' or '|' or '?' or '*' or '+' or '(' or ')' or '[' or ']' or '{' or '}';
 }
 
 public class GitCommandResult

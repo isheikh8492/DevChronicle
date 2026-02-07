@@ -21,10 +21,11 @@ public class SummarizationValidationTests
             "ValidateBullets",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
 
+        using var testDb = TestDb.Create();
         var service = new SummarizationService(
-            new DatabaseService(),
+            testDb.Db,
             new ClusteringService(),
-            new SettingsService(new DatabaseService()));
+            new SettingsService(testDb.Db));
 
         var result = (List<string>)method!.Invoke(service, new object[] { lines, 2 })!;
 

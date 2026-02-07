@@ -9,8 +9,8 @@ public class DatabaseSchemaTests
     [Fact]
     public void Database_HasCoreTables()
     {
-        var db = new DatabaseService();
-        using var connection = db.GetConnection();
+        using var testDb = TestDb.Create();
+        using var connection = testDb.Db.GetConnection();
         connection.Open();
 
         var tables = connection.Query<string>(

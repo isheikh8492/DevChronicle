@@ -62,8 +62,8 @@ public class ExportServiceTests
     [Fact]
     public async Task ExportAsync_ReturnsError_WhenNoSessionsSelected()
     {
-        var db = new DatabaseService();
-        var service = new ExportService(db);
+        using var testDb = TestDb.Create();
+        var service = new ExportService(testDb.Db);
 
         var result = await service.ExportAsync(new ExportRequest
         {
@@ -84,8 +84,8 @@ public class ExportServiceTests
     [Fact]
     public async Task ExportAsync_ReturnsError_WhenOutputDirectoryMissing()
     {
-        var db = new DatabaseService();
-        var service = new ExportService(db);
+        using var testDb = TestDb.Create();
+        var service = new ExportService(testDb.Db);
 
         var result = await service.ExportAsync(new ExportRequest
         {
@@ -106,13 +106,13 @@ public class ExportServiceTests
     [Fact]
     public async Task ExportAsync_WritesDiaryWithManifestHeader()
     {
-        var db = new DatabaseService();
-        var service = new ExportService(db);
-        var sessionId = await CreateSessionAsync(db);
+        using var testDb = TestDb.Create();
+        var service = new ExportService(testDb.Db);
+        var sessionId = await CreateSessionAsync(testDb.Db);
 
         var day = DateTime.UtcNow.Date;
-        await CreateDayAsync(db, sessionId, day, DevChronicle.Models.DayStatus.Summarized);
-        await CreateSummaryAsync(db, sessionId, day, "- Did something", DateTime.UtcNow);
+        await CreateDayAsync(testDb.Db, sessionId, day, DevChronicle.Models.DayStatus.Summarized);
+        await CreateSummaryAsync(testDb.Db, sessionId, day, "- Did something", DateTime.UtcNow);
 
         var outputDir = CreateTempDirectory();
         var result = await service.ExportAsync(new ExportRequest
@@ -137,13 +137,13 @@ public class ExportServiceTests
     [Fact]
     public async Task PreviewDiaryUpdateAsync_Succeeds_ForManagedDiary()
     {
-        var db = new DatabaseService();
-        var service = new ExportService(db);
-        var sessionId = await CreateSessionAsync(db);
+        using var testDb = TestDb.Create();
+        var service = new ExportService(testDb.Db);
+        var sessionId = await CreateSessionAsync(testDb.Db);
 
         var day = DateTime.UtcNow.Date;
-        await CreateDayAsync(db, sessionId, day, DevChronicle.Models.DayStatus.Summarized);
-        await CreateSummaryAsync(db, sessionId, day, "- Did something", DateTime.UtcNow);
+        await CreateDayAsync(testDb.Db, sessionId, day, DevChronicle.Models.DayStatus.Summarized);
+        await CreateSummaryAsync(testDb.Db, sessionId, day, "- Did something", DateTime.UtcNow);
 
         var outputDir = CreateTempDirectory();
         var export = await service.ExportAsync(new ExportRequest
@@ -171,8 +171,8 @@ public class ExportServiceTests
     [Fact]
     public async Task PreviewDiaryUpdateAsync_ReturnsUnmanagedError_WhenNoManifest()
     {
-        var db = new DatabaseService();
-        var service = new ExportService(db);
+        using var testDb = TestDb.Create();
+        var service = new ExportService(testDb.Db);
         var dir = CreateTempDirectory();
         var path = Path.Combine(dir, "unmanaged.md");
         await File.WriteAllTextAsync(path, "# Notes\n\n- Just text");
@@ -190,13 +190,13 @@ public class ExportServiceTests
     [Fact]
     public async Task UpdateDiaryAsync_UpdatesLastSyncedAt()
     {
-        var db = new DatabaseService();
-        var service = new ExportService(db);
-        var sessionId = await CreateSessionAsync(db);
+        using var testDb = TestDb.Create();
+        var service = new ExportService(testDb.Db);
+        var sessionId = await CreateSessionAsync(testDb.Db);
 
         var day = DateTime.UtcNow.Date;
-        await CreateDayAsync(db, sessionId, day, DevChronicle.Models.DayStatus.Summarized);
-        await CreateSummaryAsync(db, sessionId, day, "- Did something", DateTime.UtcNow.AddMinutes(-10));
+        await CreateDayAsync(testDb.Db, sessionId, day, DevChronicle.Models.DayStatus.Summarized);
+        await CreateSummaryAsync(testDb.Db, sessionId, day, "- Did something", DateTime.UtcNow.AddMinutes(-10));
 
         var outputDir = CreateTempDirectory();
         var export = await service.ExportAsync(new ExportRequest
@@ -231,13 +231,13 @@ public class ExportServiceTests
     [Fact]
     public async Task UpdateDiaryAsync_DiffCountsReflectChanges()
     {
-        var db = new DatabaseService();
-        var service = new ExportService(db);
-        var sessionId = await CreateSessionAsync(db);
+        using var testDb = TestDb.Create();
+        var service = new ExportService(testDb.Db);
+        var sessionId = await CreateSessionAsync(testDb.Db);
         var day = new DateTime(2020, 1, 1);
 
-        await CreateDayAsync(db, sessionId, day, DevChronicle.Models.DayStatus.Summarized);
-        await CreateSummaryAsync(db, sessionId, day, "- Updated summary", new DateTime(2020, 1, 2, 0, 0, 0, DateTimeKind.Utc));
+        await CreateDayAsync(testDb.Db, sessionId, day, DevChronicle.Models.DayStatus.Summarized);
+        await CreateSummaryAsync(testDb.Db, sessionId, day, "- Updated summary", new DateTime(2020, 1, 2, 0, 0, 0, DateTimeKind.Utc));
 
         var outputDir = CreateTempDirectory();
         var diaryPath = Path.Combine(outputDir, "managed.md");
@@ -270,13 +270,13 @@ public class ExportServiceTests
     [Fact]
     public async Task ConvertUnmanagedDiaryToManagedAsync_CreatesNewFile()
     {
-        var db = new DatabaseService();
-        var service = new ExportService(db);
-        var sessionId = await CreateSessionAsync(db);
+        using var testDb = TestDb.Create();
+        var service = new ExportService(testDb.Db);
+        var sessionId = await CreateSessionAsync(testDb.Db);
         var day = DateTime.UtcNow.Date;
 
-        await CreateDayAsync(db, sessionId, day, DevChronicle.Models.DayStatus.Summarized);
-        await CreateSummaryAsync(db, sessionId, day, "- Did something", DateTime.UtcNow);
+        await CreateDayAsync(testDb.Db, sessionId, day, DevChronicle.Models.DayStatus.Summarized);
+        await CreateSummaryAsync(testDb.Db, sessionId, day, "- Did something", DateTime.UtcNow);
 
         var dir = CreateTempDirectory();
         var sourcePath = Path.Combine(dir, "notes.md");
@@ -297,13 +297,13 @@ public class ExportServiceTests
     [Fact]
     public async Task ExportAsync_CancellationDoesNotLeaveFinalFile()
     {
-        var db = new DatabaseService();
-        var service = new ExportService(db);
-        var sessionId = await CreateSessionAsync(db);
+        using var testDb = TestDb.Create();
+        var service = new ExportService(testDb.Db);
+        var sessionId = await CreateSessionAsync(testDb.Db);
         var day = DateTime.UtcNow.Date;
 
-        await CreateDayAsync(db, sessionId, day, DevChronicle.Models.DayStatus.Summarized);
-        await CreateSummaryAsync(db, sessionId, day, "- Did something", DateTime.UtcNow);
+        await CreateDayAsync(testDb.Db, sessionId, day, DevChronicle.Models.DayStatus.Summarized);
+        await CreateSummaryAsync(testDb.Db, sessionId, day, "- Did something", DateTime.UtcNow);
 
         var outputDir = CreateTempDirectory();
         using var cts = new CancellationTokenSource();

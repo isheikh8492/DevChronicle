@@ -12,17 +12,25 @@ public class DatabaseService
     private readonly string _connectionString;
     private readonly string _dbPath;
 
-    public DatabaseService()
+    public DatabaseService(string? dbPath = null)
+    {
+        _dbPath = string.IsNullOrWhiteSpace(dbPath) ? GetDefaultDbPath() : dbPath;
+
+        var dbDir = Path.GetDirectoryName(_dbPath);
+        if (!string.IsNullOrWhiteSpace(dbDir))
+            Directory.CreateDirectory(dbDir);
+
+        _connectionString = $"Data Source={_dbPath}";
+
+        InitializeDatabase();
+    }
+
+    private static string GetDefaultDbPath()
     {
         var appDataPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "DevChronicle");
-
-        Directory.CreateDirectory(appDataPath);
-        _dbPath = Path.Combine(appDataPath, "devchronicle.db");
-        _connectionString = $"Data Source={_dbPath}";
-
-        InitializeDatabase();
+        return Path.Combine(appDataPath, "devchronicle.db");
     }
 
     public SqliteConnection GetConnection()
