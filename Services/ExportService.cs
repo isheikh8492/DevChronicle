@@ -63,7 +63,7 @@ public class ExportService
         // Load export inputs in bulk (one row per day/summary, potentially many commits).
         Report("Loading day and summary data...");
         var days = await _databaseService.GetDaysInRangeForSessionsAsync(request.SessionIds, null, null);
-        var summaries = await _databaseService.GetLatestDaySummariesInRangeForSessionsAsync(request.SessionIds, null, null);
+        var summaries = await _databaseService.GetLatestEffectiveDaySummariesInRangeForSessionsAsync(request.SessionIds, null, null);
         var commits = new List<Commit>();
         if (shouldWriteArchive)
         {
@@ -187,7 +187,7 @@ public class ExportService
             var sessionIds = manifest.SessionIds;
             var sessions = await _databaseService.GetSessionsByIdsAsync(sessionIds);
             var days = await _databaseService.GetDaysInRangeForSessionsAsync(sessionIds, null, null);
-            var summaries = await _databaseService.GetLatestDaySummariesInRangeForSessionsAsync(sessionIds, null, null);
+            var summaries = await _databaseService.GetLatestEffectiveDaySummariesInRangeForSessionsAsync(sessionIds, null, null);
 
             request.CancellationToken.ThrowIfCancellationRequested();
 
@@ -278,7 +278,7 @@ public class ExportService
             Report("Loading day and summary data...");
             var sessionIds = manifest.SessionIds;
             var days = await _databaseService.GetDaysInRangeForSessionsAsync(sessionIds, null, null);
-            var summaries = await _databaseService.GetLatestDaySummariesInRangeForSessionsAsync(sessionIds, null, null);
+            var summaries = await _databaseService.GetLatestEffectiveDaySummariesInRangeForSessionsAsync(sessionIds, null, null);
             Report("Computing diff preview...");
             var diff = ComputeDiaryDiff(diaryText, manifest, days, summaries);
 
@@ -338,7 +338,7 @@ public class ExportService
         Report("Loading session/day/summary data...");
         var sessions = await _databaseService.GetSessionsByIdsAsync(sessionIds);
         var days = await _databaseService.GetDaysInRangeForSessionsAsync(sessionIds, null, null);
-        var summaries = await _databaseService.GetLatestDaySummariesInRangeForSessionsAsync(sessionIds, null, null);
+        var summaries = await _databaseService.GetLatestEffectiveDaySummariesInRangeForSessionsAsync(sessionIds, null, null);
 
         var inputDir = Path.GetDirectoryName(inputDiaryPath) ?? Directory.GetCurrentDirectory();
         var baseName = Path.GetFileNameWithoutExtension(inputDiaryPath);

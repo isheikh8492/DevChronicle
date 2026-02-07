@@ -15,6 +15,7 @@
             <converters:CountToVisibilityConverter x:Key="CountToVisibilityConverter"/>
             <converters:InverseBoolConverter x:Key="InverseBoolConverter"/>
             <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+            <converters:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter"/>
             <converters:CountAndNotMiningToVisibilityConverter x:Key="CountAndNotMiningToVisibilityConverter"/>
             <converters:SelectedDayAndNotSummarizingConverter x:Key="SelectedDayAndNotSummarizingConverter"/>
             <converters:BoolToEyeIconConverter x:Key="BoolToEyeIconConverter"/>

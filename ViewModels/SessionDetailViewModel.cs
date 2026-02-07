@@ -36,6 +36,12 @@ public partial class SessionDetailViewModel : ObservableObject
     private bool hasSelectedDaySummary;
 
     [ObservableProperty]
+    private bool isEditingSummary;
+
+    [ObservableProperty]
+    private string editedSummaryText = string.Empty;
+
+    [ObservableProperty]
     private ObservableCollection<CommitEvidenceViewModel> selectedDayEvidence = new();
 
     [ObservableProperty]
@@ -199,17 +205,21 @@ public partial class SessionDetailViewModel : ObservableObject
             {
                 SelectedDayBullets.Clear();
                 HasSelectedDaySummary = false;
+                EditedSummaryText = string.Empty;
+                IsEditingSummary = false;
             });
             return;
         }
 
-        var summary = await _databaseService.GetDaySummaryAsync(session.Id, selectedDay.Date);
+        var (summary, _) = await _databaseService.GetEffectiveDaySummaryAsync(session.Id, selectedDay.Date);
         if (summary == null || string.IsNullOrWhiteSpace(summary.BulletsText))
         {
             await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
             {
                 SelectedDayBullets.Clear();
                 HasSelectedDaySummary = false;
+                EditedSummaryText = string.Empty;
+                IsEditingSummary = false;
             });
             return;
         }
@@ -227,7 +237,51 @@ public partial class SessionDetailViewModel : ObservableObject
                 SelectedDayBullets.Add(bullet);
 
             HasSelectedDaySummary = SelectedDayBullets.Count > 0;
+            EditedSummaryText = string.Join(Environment.NewLine, SelectedDayBullets);
         });
+    }
+
+    [RelayCommand]
+    private void StartEditSummary()
+    {
+        if (DayBrowser.SelectedDay == null)
+            return;
+
+        IsEditingSummary = true;
+    }
+
+    [RelayCommand]
+    private async Task CancelEditSummaryAsync()
+    {
+        IsEditingSummary = false;
+        await LoadSelectedDaySummaryAsync();
+    }
+
+    [RelayCommand]
+    private async Task SaveEditedSummaryAsync()
+    {
+        var session = _sessionContext.CurrentSession;
+        var selectedDay = DayBrowser.SelectedDay;
+        if (session == null || selectedDay == null)
+            return;
+
+        var normalized = BulletText.NormalizeToDashBullets(EditedSummaryText);
+        if (normalized.Count == 0)
+        {
+            System.Windows.MessageBox.Show("Summary cannot be empty.", "Edit Summary", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        await _databaseService.UpsertDaySummaryOverrideAsync(new DaySummaryOverride
+        {
+            SessionId = session.Id,
+            Day = selectedDay.Date,
+            BulletsText = string.Join("\n", normalized),
+            UpdatedAt = DateTime.UtcNow
+        });
+
+        IsEditingSummary = false;
+        await LoadSelectedDaySummaryAsync();
     }
 
     private async Task LoadSelectedDayEvidenceAsync()

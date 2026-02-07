@@ -1,4 +1,5 @@
 using System.Windows.Controls;
+using System.Windows.Threading;
 using DevChronicle.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -74,5 +75,15 @@ public partial class SessionDetailPage : Page
         {
             mainWindow.NavigateBack();
         }
+    }
+
+    private void EditSummaryButton_Click(object sender, System.Windows.RoutedEventArgs e)
+    {
+        // Command runs first and toggles edit mode; focus textbox after state update.
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
+        {
+            SummaryEditorTextBox.Focus();
+            SummaryEditorTextBox.CaretIndex = SummaryEditorTextBox.Text?.Length ?? 0;
+        }));
     }
 }

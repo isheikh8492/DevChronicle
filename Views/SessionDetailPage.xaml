@@ -448,46 +448,75 @@
                                             MaxHeight="{Binding ActualHeight, ElementName=TabsContainerGrid, FallbackValue=400}"
                                             HorizontalScrollBarVisibility="Disabled"
                                             VerticalScrollBarVisibility="Auto">
-                                            <StackPanel Margin="8,12,8,12">
-                                                <ItemsControl ItemsSource="{Binding SelectedDayBullets}">
-                                                    <ItemsControl.Style>
-                                                        <Style TargetType="ItemsControl">
-                                                            <Setter Property="Visibility" Value="Visible" />
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding HasSelectedDaySummary}" Value="False">
-                                                                    <Setter Property="Visibility" Value="Collapsed" />
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </ItemsControl.Style>
-                                                    <ItemsControl.ItemTemplate>
-                                                        <DataTemplate>
-                                                            <Grid Margin="0,0,0,8">
-                                                                <TextBlock
-                                                                    Width="{Binding RelativeSource={RelativeSource AncestorType=ScrollViewer}, Path=ViewportWidth}"
-                                                                    FontSize="13"
-                                                                    Text="{Binding}"
-                                                                    TextWrapping="Wrap" />
-                                                            </Grid>
-                                                        </DataTemplate>
-                                                    </ItemsControl.ItemTemplate>
-                                                </ItemsControl>
+                                            <StackPanel Margin="0,12,0,12">
+                                                <Grid Margin="0,0,0,12">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="8" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
 
-                                                <TextBlock
-                                                    FontSize="12"
-                                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                    Text="No summary yet. Select a day and run summarization.">
-                                                    <TextBlock.Style>
-                                                        <Style TargetType="TextBlock">
-                                                            <Setter Property="Visibility" Value="Collapsed" />
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding HasSelectedDaySummary}" Value="False">
-                                                                    <Setter Property="Visibility" Value="Visible" />
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </TextBlock.Style>
-                                                </TextBlock>
+                                                    <ui:Button
+                                                        Grid.Column="1"
+                                                        Appearance="Primary"
+                                                        Command="{Binding SaveEditedSummaryCommand}"
+                                                        Content="Save"
+                                                        Visibility="{Binding IsEditingSummary, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+                                                    <ui:Button
+                                                        Grid.Column="3"
+                                                        Appearance="Secondary"
+                                                        Command="{Binding CancelEditSummaryCommand}"
+                                                        Content="Cancel"
+                                                        Visibility="{Binding IsEditingSummary, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+                                                    <ui:Button
+                                                        Grid.Column="4"
+                                                        Appearance="Secondary"
+                                                        Click="EditSummaryButton_Click"
+                                                        Command="{Binding StartEditSummaryCommand}"
+                                                        Content="Edit"
+                                                        Visibility="{Binding IsEditingSummary, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
+                                                </Grid>
+
+                                                <Border
+                                                    MinHeight="180"
+                                                    Padding="10"
+                                                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                                                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="8">
+                                                    <TextBox
+                                                        x:Name="SummaryEditorTextBox"
+                                                        Padding="0"
+                                                        AcceptsReturn="True"
+                                                        Background="Transparent"
+                                                        BorderThickness="0"
+                                                        CaretBrush="{DynamicResource TextFillColorPrimaryBrush}"
+                                                        FocusVisualStyle="{x:Null}"
+                                                        Focusable="{Binding IsEditingSummary}"
+                                                        FontSize="13"
+                                                        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                                        IsHitTestVisible="{Binding IsEditingSummary}"
+                                                        IsReadOnly="False"
+                                                        OverridesDefaultStyle="True"
+                                                        Text="{Binding EditedSummaryText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                        TextWrapping="Wrap"
+                                                        VerticalScrollBarVisibility="Auto">
+                                                        <TextBox.Template>
+                                                            <ControlTemplate TargetType="{x:Type TextBox}">
+                                                                <ScrollViewer
+                                                                    x:Name="PART_ContentHost"
+                                                                    Background="{TemplateBinding Background}"
+                                                                    Focusable="False"
+                                                                    HorizontalScrollBarVisibility="Hidden"
+                                                                    VerticalScrollBarVisibility="{TemplateBinding VerticalScrollBarVisibility}" />
+                                                            </ControlTemplate>
+                                                        </TextBox.Template>
+                                                    </TextBox>
+                                                </Border>
                                             </StackPanel>
                                         </ScrollViewer>
                                     </TabItem>

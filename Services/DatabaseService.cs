@@ -148,6 +148,17 @@ public class DatabaseService
                 FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
             )");
 
+        // Create day summary overrides table (manual edits).
+        connection.Execute(@"
+            CREATE TABLE IF NOT EXISTS day_summary_overrides (
+                session_id INTEGER NOT NULL,
+                day TEXT NOT NULL,
+                bullets_text TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (session_id, day),
+                FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+            )");
+
         // Create resume_summaries table
         connection.Execute(@"
             CREATE TABLE IF NOT EXISTS resume_summaries (
@@ -852,6 +863,73 @@ public class DatabaseService
     }
 
     // Day summary operations
+    public async Task<DaySummaryOverride?> GetDaySummaryOverrideAsync(int sessionId, DateTime day)
+    {
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+        var dayStart = day.Date.ToString("yyyy-MM-dd");
+        var sql = @"
+            SELECT
+                session_id AS SessionId,
+                day AS Day,
+                bullets_text AS BulletsText,
+                updated_at AS UpdatedAt
+            FROM day_summary_overrides
+            WHERE session_id = @SessionId AND day = @Day
+            LIMIT 1";
+        return await connection.QueryFirstOrDefaultAsync<DaySummaryOverride>(sql, new { SessionId = sessionId, Day = dayStart });
+    }
+
+    public async Task UpsertDaySummaryOverrideAsync(DaySummaryOverride row)
+    {
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+        var sql = @"
+            INSERT INTO day_summary_overrides
+            (session_id, day, bullets_text, updated_at)
+            VALUES (@SessionId, @Day, @BulletsText, @UpdatedAt)
+            ON CONFLICT(session_id, day) DO UPDATE SET
+                bullets_text = @BulletsText,
+                updated_at = @UpdatedAt";
+
+        await connection.ExecuteAsync(sql, new
+        {
+            row.SessionId,
+            Day = row.Day.Date.ToString("yyyy-MM-dd"),
+            row.BulletsText,
+            UpdatedAt = row.UpdatedAt.ToString("yyyy-MM-ddTHH:mm:ssZ")
+        });
+    }
+
+    public async Task<int> DeleteDaySummaryOverrideAsync(int sessionId, DateTime day)
+    {
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+        return await connection.ExecuteAsync(
+            "DELETE FROM day_summary_overrides WHERE session_id = @SessionId AND day = @Day",
+            new { SessionId = sessionId, Day = day.Date.ToString("yyyy-MM-dd") });
+    }
+
+    public async Task<(DaySummary? Summary, bool IsOverride)> GetEffectiveDaySummaryAsync(int sessionId, DateTime day)
+    {
+        var overrideRow = await GetDaySummaryOverrideAsync(sessionId, day);
+        if (overrideRow != null && !string.IsNullOrWhiteSpace(overrideRow.BulletsText))
+        {
+            return (new DaySummary
+            {
+                SessionId = overrideRow.SessionId,
+                Day = overrideRow.Day,
+                BulletsText = overrideRow.BulletsText,
+                Model = "manual",
+                PromptVersion = "override",
+                InputHash = string.Empty,
+                CreatedAt = overrideRow.UpdatedAt
+            }, true);
+        }
+
+        return (await GetDaySummaryAsync(sessionId, day), false);
+    }
+
     public async Task<DaySummary?> GetDaySummaryAsync(int sessionId, DateTime day)
     {
         using var connection = GetConnection();
@@ -1106,6 +1184,60 @@ public class DatabaseService
         }
 
         // Take latest per (session_id, day) deterministically using created_at ordering from SQL.
+        return rows
+            .GroupBy(r => (r.SessionId, r.Day.Date))
+            .Select(g => g.First())
+            .ToList();
+    }
+
+    public async Task<List<DaySummary>> GetLatestEffectiveDaySummariesInRangeForSessionsAsync(IEnumerable<int> sessionIds, DateTime? start, DateTime? end)
+    {
+        var ids = sessionIds.Distinct().ToList();
+        if (ids.Count == 0)
+            return new List<DaySummary>();
+
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+
+        // Effective summary is override if present, otherwise latest AI summary.
+        // Join is safe because overrides are keyed by (session_id, day).
+        var baseSql = @"
+            SELECT
+                ds.session_id AS SessionId,
+                ds.day AS Day,
+                COALESCE(ov.bullets_text, ds.bullets_text) AS BulletsText,
+                CASE WHEN ov.bullets_text IS NOT NULL THEN 'manual' ELSE ds.model END AS Model,
+                CASE WHEN ov.bullets_text IS NOT NULL THEN 'override' ELSE ds.prompt_version END AS PromptVersion,
+                CASE WHEN ov.bullets_text IS NOT NULL THEN '' ELSE ds.input_hash END AS InputHash,
+                CASE WHEN ov.bullets_text IS NOT NULL THEN ov.updated_at ELSE ds.created_at END AS CreatedAt
+            FROM day_summaries ds
+            LEFT JOIN day_summary_overrides ov
+              ON ov.session_id = ds.session_id AND ov.day = ds.day
+            WHERE ds.session_id IN @SessionIds";
+
+        IEnumerable<DaySummary> rows;
+        if (start.HasValue && end.HasValue)
+        {
+            var sql = baseSql + @"
+              AND ds.day BETWEEN @Start AND @End
+            ORDER BY ds.created_at DESC";
+
+            rows = await connection.QueryAsync<DaySummary>(sql, new
+            {
+                SessionIds = ids,
+                Start = start.Value.Date.ToString("yyyy-MM-dd"),
+                End = end.Value.Date.ToString("yyyy-MM-dd")
+            });
+        }
+        else
+        {
+            var sql = baseSql + @"
+            ORDER BY ds.created_at DESC";
+            rows = await connection.QueryAsync<DaySummary>(sql, new { SessionIds = ids });
+        }
+
+        // Take latest AI per (session_id, day), then overlay override text via COALESCE.
+        // Because overrides are 1 row per day, we can still deterministically pick one row per day.
         return rows
             .GroupBy(r => (r.SessionId, r.Day.Date))
             .Select(g => g.First())
