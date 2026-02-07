@@ -540,6 +540,39 @@ public class DatabaseService
         return rows.ToList();
     }
 
+    public async Task<List<IntegrationEvent>> GetIntegrationEventsForDayAsync(int sessionId, DateTime day)
+    {
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+        var dayStart = day.Date.ToString("yyyy-MM-dd");
+
+        var sql = @"
+            SELECT DISTINCT
+                ie.id AS Id,
+                ie.session_id AS SessionId,
+                ie.anchor_sha AS AnchorSha,
+                ie.occurred_at AS OccurredAt,
+                ie.method AS Method,
+                ie.confidence AS Confidence,
+                ie.details_json AS DetailsJson
+            FROM integration_events ie
+            LEFT JOIN integration_event_commits iec
+              ON iec.integration_event_id = ie.id
+             AND iec.session_id = ie.session_id
+            LEFT JOIN commits c
+              ON c.session_id = iec.session_id
+             AND c.sha = iec.sha
+            WHERE ie.session_id = @SessionId
+              AND (
+                    DATE(ie.occurred_at) = @Day
+                 OR DATE(c.author_date) = @Day
+              )
+            ORDER BY ie.occurred_at";
+
+        var rows = await connection.QueryAsync<IntegrationEvent>(sql, new { SessionId = sessionId, Day = dayStart });
+        return rows.ToList();
+    }
+
     public async Task<IEnumerable<Commit>> GetCommitsForDayAsync(int sessionId, DateTime day)
     {
         using var connection = GetConnection();

@@ -13,12 +13,12 @@ public class SummarizationService
     private readonly ClusteringService _clusteringService;
     private readonly SettingsService _settingsService;
     private string _modelName = "gpt-4o-mini";
-    private const string PromptVersion = "v1";
+    private const string PromptVersion = "v2";
     private const int DefaultMaxCompletionTokensPerCall = 3000;
     private const int DefaultMaxTotalBullets = 40;
     private const int MaxContinuationParts = 4;
     private const string DefaultMasterPrompt =
-        "You are a concise developer diary generator. Output ONLY bullet points that start with '- '.";
+        "You are an evidence-driven developer diary generator. Output ONLY bullet points starting with '- ' and stay strictly grounded in provided evidence.";
     private static readonly HttpClient Http = new HttpClient
     {
         BaseAddress = new Uri("https://api.openai.com/v1/")
@@ -69,9 +69,11 @@ public class SummarizationService
 
             // Cluster commits into work units
             var workUnits = _clusteringService.ClusterCommits(commits);
-
-            // Build prompt
-            var prompt = BuildPrompt(day, commits, workUnits, maxBullets);
+            var session = await _databaseService.GetSessionAsync(sessionId);
+            var dayRecord = (await _databaseService.GetDaysAsync(sessionId))
+                .FirstOrDefault(d => d.Date.Date == day.Date);
+            var branchRows = await _databaseService.GetCommitBranchRowsForDayAsync(sessionId, day);
+            var integrationEvents = await _databaseService.GetIntegrationEventsForDayAsync(sessionId, day);
 
             // Call OpenAI or generate offline summary
             string bulletsText;
@@ -92,18 +94,30 @@ public class SummarizationService
 
             maxCompletionTokensPerCall = Clamp(maxCompletionTokensPerCall, min: 256, max: 8000);
             maxTotalBullets = Clamp(maxTotalBullets, min: 1, max: 200);
+            var effectiveMaxBullets = Clamp(Math.Min(maxBullets, maxTotalBullets), 1, 200);
+
+            // Build prompt
+            var prompt = BuildPrompt(
+                day,
+                commits,
+                workUnits,
+                effectiveMaxBullets,
+                session,
+                dayRecord,
+                branchRows,
+                integrationEvents);
 
             bulletsText = await CallOpenAIWithContinuationAsync(
                 masterPrompt,
                 prompt,
                 apiKey,
-                maxBullets: Math.Min(maxBullets, maxTotalBullets),
+                maxBullets: effectiveMaxBullets,
                 maxCompletionTokensPerCall: maxCompletionTokensPerCall,
                 cancellationToken);
             result.UsedAI = true;
 
             // Validate and clean bullets
-            var bullets = ValidateBullets(bulletsText, maxBullets);
+            var bullets = ValidateBullets(bulletsText, effectiveMaxBullets);
             result.Bullets = bullets;
 
             // Store in database
@@ -121,9 +135,6 @@ public class SummarizationService
             await _databaseService.UpsertDaySummaryAsync(summary);
 
             // Update day status
-            var dayRecord = (await _databaseService.GetDaysAsync(sessionId))
-                .FirstOrDefault(d => d.Date.Date == day.Date);
-
             if (dayRecord != null)
             {
                 dayRecord.Status = DayStatus.Summarized;
@@ -140,34 +151,119 @@ public class SummarizationService
         return result;
     }
 
-    private string BuildPrompt(DateTime day, List<Commit> commits, List<WorkUnit> workUnits, int maxBullets)
+    private string BuildPrompt(
+        DateTime day,
+        List<Commit> commits,
+        List<WorkUnit> workUnits,
+        int maxBullets,
+        Session? session,
+        Models.Day? dayRecord,
+        List<CommitBranchRow> branchRows,
+        List<IntegrationEvent> integrationEvents)
     {
         var sb = new StringBuilder();
-        sb.AppendLine($"Date: {day:yyyy-MM-dd}");
-        sb.AppendLine($"Commits: {commits.Count}");
-        sb.AppendLine($"Changes: +{commits.Sum(c => c.Additions)}/-{commits.Sum(c => c.Deletions)} lines");
+        sb.AppendLine("EVIDENCE_BUNDLE");
         sb.AppendLine();
-        sb.AppendLine("Work done:");
+        sb.AppendLine("Session metadata:");
+        sb.AppendLine($"- SessionId: {session?.Id ?? 0}");
+        sb.AppendLine($"- SessionName: {session?.Name ?? "(unknown)"}");
+        sb.AppendLine($"- RepoPath: {session?.RepoPath ?? "(unknown)"}");
+        sb.AppendLine($"- MainBranch: {session?.MainBranch ?? "(unknown)"}");
+        sb.AppendLine($"- Range: {(session?.RangeStart.HasValue == true ? session.RangeStart.Value.ToString("yyyy-MM-dd") : "(unset)")} to {(session?.RangeEnd.HasValue == true ? session.RangeEnd.Value.ToString("yyyy-MM-dd") : "(unset)")}");
         sb.AppendLine();
 
-        foreach (var unit in workUnits.Take(5))
+        sb.AppendLine("Day:");
+        sb.AppendLine($"- Date: {day:yyyy-MM-dd}");
+        sb.AppendLine($"- Status: {dayRecord?.Status.ToString() ?? "unknown"}");
+        sb.AppendLine($"- CommitCount: {commits.Count}");
+        sb.AppendLine($"- Additions: {commits.Sum(c => c.Additions)}");
+        sb.AppendLine($"- Deletions: {commits.Sum(c => c.Deletions)}");
+        sb.AppendLine();
+
+        sb.AppendLine("Work-unit summaries:");
+        sb.AppendLine();
+
+        foreach (var unit in workUnits)
         {
             sb.AppendLine(_clusteringService.GenerateWorkUnitSummary(unit));
         }
 
         sb.AppendLine();
-        sb.AppendLine($"Generate {maxBullets} concise bullet points (max 10) summarizing this day's development work.");
-        sb.AppendLine("Requirements:");
-        sb.AppendLine("- Each bullet must start with '- '");
-        sb.AppendLine("- Focus on WHAT was done, not HOW");
-        sb.AppendLine("- Be specific and evidence-based (reference actual commits/files)");
-        sb.AppendLine("- Use active voice and past tense");
-        sb.AppendLine("- DO NOT invent features or functionality not evident in commits");
-        sb.AppendLine("- If unclear, be conservative in descriptions");
+        sb.AppendLine("Commit evidence:");
+        foreach (var commit in commits.OrderBy(c => c.AuthorDate))
+        {
+            var shortSha = commit.Sha.Length > 10 ? commit.Sha[..10] : commit.Sha;
+            sb.AppendLine($"- Commit `{shortSha}`: {commit.Subject}");
+            sb.AppendLine($"  - Author: {commit.AuthorName} <{commit.AuthorEmail}> at {commit.AuthorDate:yyyy-MM-ddTHH:mm:ss}");
+            sb.AppendLine($"  - Committer: {commit.CommitterName} <{commit.CommitterEmail}> at {commit.CommitterDate:yyyy-MM-ddTHH:mm:ss}");
+            sb.AppendLine($"  - Churn: +{commit.Additions}/-{commit.Deletions}, IsMerge: {commit.IsMerge}");
+
+            var files = ParseCommitFiles(commit.FilesJson);
+            foreach (var file in files)
+            {
+                sb.AppendLine($"  - File: `{file.Path}` (+{file.Additions}/-{file.Deletions})");
+            }
+        }
+
         sb.AppendLine();
-        sb.AppendLine("Output only the bullet points, no other text:");
+        sb.AppendLine("Branch evidence:");
+        if (branchRows.Count == 0)
+        {
+            sb.AppendLine("- (none)");
+        }
+        else
+        {
+            foreach (var row in branchRows)
+            {
+                var shortSha = row.Sha.Length > 10 ? row.Sha[..10] : row.Sha;
+                sb.AppendLine($"- `{shortSha}` -> Branch `{(string.IsNullOrWhiteSpace(row.BranchName) ? "(unattributed)" : row.BranchName)}`");
+            }
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("Integration evidence:");
+        if (integrationEvents.Count == 0)
+        {
+            sb.AppendLine("- (none)");
+        }
+        else
+        {
+            foreach (var evt in integrationEvents.OrderBy(e => e.OccurredAt))
+            {
+                sb.AppendLine($"- Event `{evt.Id}` Method `{evt.Method}` Confidence `{evt.Confidence}` Anchor `{evt.AnchorSha ?? "(none)"}` Occurred `{evt.OccurredAt:yyyy-MM-ddTHH:mm:ss}`");
+                if (!string.IsNullOrWhiteSpace(evt.DetailsJson))
+                    sb.AppendLine($"  - Details: {evt.DetailsJson}");
+            }
+        }
+
+        sb.AppendLine();
+        sb.AppendLine($"Generate up to {maxBullets} dense, technical diary bullets from this evidence.");
+        sb.AppendLine("Per bullet, include WHAT + WHERE + HOW + WHY when evidence supports it.");
+        sb.AppendLine("If WHY is not evidenced, include `[uncertain]` and say what evidence is missing.");
+        sb.AppendLine("If you infer beyond explicit facts, tag bullet with `[inferred]`.");
+        sb.AppendLine("Do not fabricate facts.");
+        sb.AppendLine("Coverage targets (include if evidenced): feature/bug/maintenance, commit intent, file churn/risk, architecture decisions/tradeoffs, UI/UX behavior, backend/data impacts, branch/integration context, testing/debugging/validation, blockers, experiments, unresolved next steps.");
+        sb.AppendLine("Output contract:");
+        sb.AppendLine("- Each bullet must start with '- '");
+        sb.AppendLine("- No headings, no numbering, no code fences, no preface/closing text");
+        sb.AppendLine("- Use inline backticks for files, symbols, commands, APIs, and config keys where relevant");
 
         return sb.ToString();
+    }
+
+    private static List<CommitFile> ParseCommitFiles(string filesJson)
+    {
+        if (string.IsNullOrWhiteSpace(filesJson))
+            return new List<CommitFile>();
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<CommitFile>>(filesJson) ?? new List<CommitFile>();
+        }
+        catch
+        {
+            return new List<CommitFile>();
+        }
     }
 
     private async Task<string> CallOpenAIAsync(string systemPrompt, string prompt, string apiKey, CancellationToken cancellationToken)
