@@ -25,7 +25,8 @@ public class SummarizationValidationTests
         var service = new SummarizationService(
             testDb.Db,
             new ClusteringService(),
-            new SettingsService(testDb.Db));
+            new SettingsService(testDb.Db),
+            new GitService());
 
         var result = (List<string>)method!.Invoke(service, new object[] { lines, 2 })!;
 

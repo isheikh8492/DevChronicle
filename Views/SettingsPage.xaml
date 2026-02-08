@@ -56,6 +56,17 @@
                         Appearance="Primary"
                         Click="SaveApiKey_Click"
                         HorizontalAlignment="Left"/>
+
+                    <TextBlock
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Text="Summarization model"
+                        Margin="0,16,0,8"/>
+                    <ComboBox
+                        ItemsSource="{Binding AvailableSummarizationModels}"
+                        SelectedItem="{Binding SelectedSummarizationModel, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        MinWidth="220"
+                        HorizontalAlignment="Left"/>
                 </StackPanel>
             </ui:Card>
 

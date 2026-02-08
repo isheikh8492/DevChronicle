@@ -1,6 +1,7 @@
 using System.Threading.Tasks;
 using System;
 using System.IO;
+using System.Collections.Generic;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DevChronicle.Services;
@@ -45,6 +46,9 @@ public partial class SettingsViewModel : ObservableObject
     private string masterPromptText = string.Empty;
 
     [ObservableProperty]
+    private string selectedSummarizationModel = "gpt-4o-mini";
+
+    [ObservableProperty]
     private int summarizationMaxCompletionTokensPerCall;
 
     [ObservableProperty]
@@ -54,6 +58,12 @@ public partial class SettingsViewModel : ObservableObject
     private string defaultExportDirectory = string.Empty;
 
     private string _actualApiKey = string.Empty;
+    public IReadOnlyList<string> AvailableSummarizationModels { get; } = new[]
+    {
+        "gpt-4o-mini",
+        "gpt-4.1",
+        "gpt-5"
+    };
 
     public SettingsViewModel(SettingsService settingsService)
     {
@@ -72,6 +82,7 @@ public partial class SettingsViewModel : ObservableObject
         BackfillOrder = await _settingsService.GetAsync(SettingsService.MiningBackfillOrderKey, "OldestFirst");
         _actualApiKey = await _settingsService.GetAsync(SettingsService.OpenAiApiKeyKey, string.Empty);
         MasterPromptText = await _settingsService.GetAsync(SettingsService.SummarizationMasterPromptKey, string.Empty);
+        SelectedSummarizationModel = await _settingsService.GetAsync(SettingsService.SummarizationModelKey, "gpt-4o-mini");
         SummarizationMaxCompletionTokensPerCall = await _settingsService.GetAsync(SettingsService.SummarizationMaxCompletionTokensPerCallKey, 3000);
         SummarizationMaxTotalBulletsPerDay = await _settingsService.GetAsync(SettingsService.SummarizationMaxTotalBulletsPerDayKey, 40);
         var fallbackExportDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "DevChronicleExports");
@@ -122,6 +133,10 @@ public partial class SettingsViewModel : ObservableObject
 
     partial void OnSummarizationMaxCompletionTokensPerCallChanged(int value) => _ = _settingsService.SetAsync(SettingsService.SummarizationMaxCompletionTokensPerCallKey, value);
     partial void OnSummarizationMaxTotalBulletsPerDayChanged(int value) => _ = _settingsService.SetAsync(SettingsService.SummarizationMaxTotalBulletsPerDayKey, value);
+    partial void OnSelectedSummarizationModelChanged(string value) =>
+        _ = _settingsService.SetAsync(
+            SettingsService.SummarizationModelKey,
+            string.IsNullOrWhiteSpace(value) ? "gpt-4o-mini" : value.Trim());
 
     public async Task SaveApiKeyAsync(string newApiKey)
     {

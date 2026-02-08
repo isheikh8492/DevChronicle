@@ -12,6 +12,7 @@ public class SummarizationService
     private readonly DatabaseService _databaseService;
     private readonly ClusteringService _clusteringService;
     private readonly SettingsService _settingsService;
+    private readonly GitService _gitService;
     private string _modelName = "gpt-4o-mini";
     private const string PromptVersion = "v2";
     private const int DefaultMaxCompletionTokensPerCall = 3000;
@@ -28,15 +29,19 @@ Output requirements:
 
 Quality requirements:
 - Every bullet should include WHAT changed, WHERE it changed, HOW it was done, and WHY it was done when evidence supports it.
-- If WHY is missing from evidence, include "[uncertain]" and say what evidence is missing.
+- If WHY is missing, do not invent it; keep the bullet factual and concise.
 - If you infer beyond explicit evidence, include "[inferred]".
 - Do not fabricate facts or claim completion without evidence.
 - Prefer dense, specific, technically traceable bullets over vague summaries.
+- Do not include churn/count noise (for example +X/-Y line counts) unless explicitly requested.
+- Do not use hedging filler such as "likely", "probably", "appears to", or "aimed to" unless explicitly marked with "[uncertain]" and tied to missing evidence.
+- Do not output standalone meta-only bullets such as "no evidence found", "missing evidence", or bracket-only notes.
+- Do not output standalone provenance tags like "[multiple commits]" or "[file diff]"; fold provenance into normal sentence text if needed.
 
 Coverage (include only if evidenced):
 - feature/bug/maintenance work
 - commit intent/themes
-- file-level changes/churn/risk
+- file-level changes and risk areas
 - architecture/tradeoffs
 - UI/UX behavior changes
 - backend/data/query/API impacts
@@ -52,11 +57,16 @@ Coverage (include only if evidenced):
     };
     private string? _apiKey;
 
-    public SummarizationService(DatabaseService databaseService, ClusteringService clusteringService, SettingsService settingsService)
+    public SummarizationService(
+        DatabaseService databaseService,
+        ClusteringService clusteringService,
+        SettingsService settingsService,
+        GitService gitService)
     {
         _databaseService = databaseService;
         _clusteringService = clusteringService;
         _settingsService = settingsService;
+        _gitService = gitService;
     }
 
     public void ConfigureOpenAI(string apiKey, string? modelName = null)
@@ -101,6 +111,15 @@ Coverage (include only if evidenced):
                 .FirstOrDefault(d => d.Date.Date == day.Date);
             var branchRows = await _databaseService.GetCommitBranchRowsForDayAsync(sessionId, day);
             var integrationEvents = await _databaseService.GetIntegrationEventsForDayAsync(sessionId, day);
+            var commitDiffBySha = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (options.IncludeDiffs && session != null && !string.IsNullOrWhiteSpace(session.RepoPath))
+            {
+                foreach (var commit in commits)
+                {
+                    var diff = await _gitService.GetCommitDiffAsync(session.RepoPath, commit.Sha);
+                    commitDiffBySha[commit.Sha] = diff;
+                }
+            }
 
             // Call OpenAI or generate offline summary
             string bulletsText;
@@ -112,6 +131,7 @@ Coverage (include only if evidenced):
             }
 
             var masterPrompt = await GetMasterPromptAsync();
+            _modelName = await GetModelNameAsync();
             var maxCompletionTokensPerCall = await _settingsService.GetAsync(
                 SettingsService.SummarizationMaxCompletionTokensPerCallKey,
                 DefaultMaxCompletionTokensPerCall);
@@ -132,7 +152,9 @@ Coverage (include only if evidenced):
                 session,
                 dayRecord,
                 branchRows,
-                integrationEvents);
+                integrationEvents,
+                options.IncludeDiffs,
+                commitDiffBySha);
 
             bulletsText = await CallOpenAIWithContinuationAsync(
                 masterPrompt,
@@ -186,7 +208,9 @@ Coverage (include only if evidenced):
         Session? session,
         Models.Day? dayRecord,
         List<CommitBranchRow> branchRows,
-        List<IntegrationEvent> integrationEvents)
+        List<IntegrationEvent> integrationEvents,
+        bool includeDiffs,
+        IReadOnlyDictionary<string, string> commitDiffBySha)
     {
         var sb = new StringBuilder();
         sb.AppendLine("EVIDENCE_BUNDLE");
@@ -223,12 +247,24 @@ Coverage (include only if evidenced):
             sb.AppendLine($"- Commit `{shortSha}`: {commit.Subject}");
             sb.AppendLine($"  - Author: {commit.AuthorName} <{commit.AuthorEmail}> at {commit.AuthorDate:yyyy-MM-ddTHH:mm:ss}");
             sb.AppendLine($"  - Committer: {commit.CommitterName} <{commit.CommitterEmail}> at {commit.CommitterDate:yyyy-MM-ddTHH:mm:ss}");
-            sb.AppendLine($"  - Churn: +{commit.Additions}/-{commit.Deletions}, IsMerge: {commit.IsMerge}");
+            sb.AppendLine($"  - IsMerge: {commit.IsMerge}");
 
             var files = ParseCommitFiles(commit.FilesJson);
             foreach (var file in files)
             {
                 sb.AppendLine($"  - File: `{file.Path}` (+{file.Additions}/-{file.Deletions})");
+            }
+
+            if (includeDiffs && commitDiffBySha.TryGetValue(commit.Sha, out var diff) && !string.IsNullOrWhiteSpace(diff))
+            {
+                sb.AppendLine("  - FullDiff:");
+                sb.AppendLine("    <<<DIFF_START>>>");
+                foreach (var diffLine in diff.Split('\n'))
+                {
+                    var clean = diffLine.TrimEnd('\r');
+                    sb.AppendLine($"    {clean}");
+                }
+                sb.AppendLine("    <<<DIFF_END>>>");
             }
         }
 
@@ -266,10 +302,16 @@ Coverage (include only if evidenced):
         sb.AppendLine();
         sb.AppendLine($"Generate up to {maxBullets} dense, technical diary bullets from this evidence.");
         sb.AppendLine("Per bullet, include WHAT + WHERE + HOW + WHY when evidence supports it.");
-        sb.AppendLine("If WHY is not evidenced, include `[uncertain]` and say what evidence is missing.");
+        sb.AppendLine("If WHY is not evidenced, do not invent WHY; keep the bullet factual and skip speculative rationale.");
         sb.AppendLine("If you infer beyond explicit facts, tag bullet with `[inferred]`.");
         sb.AppendLine("Do not fabricate facts.");
-        sb.AppendLine("Coverage targets (include if evidenced): feature/bug/maintenance, commit intent, file churn/risk, architecture decisions/tradeoffs, UI/UX behavior, backend/data impacts, branch/integration context, testing/debugging/validation, blockers, experiments, unresolved next steps.");
+        sb.AppendLine("Do not include churn/count noise (+X/-Y) unless explicitly requested.");
+        sb.AppendLine("Avoid hedging filler like 'likely', 'probably', 'appears to', 'aimed to' unless explicitly marked `[uncertain]` with missing evidence.");
+        sb.AppendLine("Do not output standalone bullets that only say evidence is missing; omit those categories instead.");
+        sb.AppendLine("Do not output standalone bracket-only provenance notes (e.g. `[multiple commits]`, `[file diff]`).");
+        sb.AppendLine("Coverage targets (include if evidenced): feature/bug/maintenance, commit intent, file-level changes/risk, architecture decisions/tradeoffs, UI/UX behavior, backend/data impacts, branch/integration context, testing/debugging/validation, blockers, experiments, unresolved next steps.");
+        if (includeDiffs)
+            sb.AppendLine("Diff policy: full commit diffs are provided for all commits; do not sample or ignore them when deriving HOW/WHY details.");
         sb.AppendLine("Output contract:");
         sb.AppendLine("- Each bullet must start with '- '");
         sb.AppendLine("- No headings, no numbering, no code fences, no preface/closing text");
@@ -567,6 +609,12 @@ Coverage (include only if evidenced):
     {
         var prompt = await _settingsService.GetAsync(SettingsService.SummarizationMasterPromptKey, DefaultMasterPrompt);
         return string.IsNullOrWhiteSpace(prompt) ? DefaultMasterPrompt : prompt;
+    }
+
+    private async Task<string> GetModelNameAsync()
+    {
+        var configured = await _settingsService.GetAsync(SettingsService.SummarizationModelKey, _modelName);
+        return string.IsNullOrWhiteSpace(configured) ? _modelName : configured.Trim();
     }
 
     private async Task<SessionOptions> GetSessionOptionsAsync(int sessionId)

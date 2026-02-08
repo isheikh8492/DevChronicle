@@ -424,6 +424,18 @@ public class GitService
         return parts.Length > 0 ? parts[0] : null;
     }
 
+    public async Task<string> GetCommitDiffAsync(string repoPath, string sha)
+    {
+        var result = await RunGitCommandAsync(
+            repoPath,
+            $"show --no-color --no-ext-diff --pretty=format: --patch {sha}");
+
+        if (!result.Success)
+            return string.Empty;
+
+        return result.Output.TrimEnd();
+    }
+
     public async Task<List<BranchSnapshot>> GetBranchTipsAsync(string repoPath, int sessionId, DateTime capturedAt)
     {
         var result = await RunGitCommandAsync(
