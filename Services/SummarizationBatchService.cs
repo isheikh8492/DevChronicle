@@ -146,7 +146,7 @@ public class SummarizationBatchService
 
         var items = await _databaseService.GetSummarizationBatchItemsAsync(localBatchId);
         if (items.Count == 0)
-            return new BatchApplyResult(0, 0, "No batch items to apply.");
+            return new BatchApplyResult(0, 0, "No batch items to apply.", Array.Empty<DateTime>());
 
         var apiKey = await _summarizationService.GetConfiguredApiKeyAsync();
         if (string.IsNullOrWhiteSpace(apiKey))
@@ -166,7 +166,7 @@ public class SummarizationBatchService
         }
 
         if (string.IsNullOrWhiteSpace(batch.OutputFileId) && string.IsNullOrWhiteSpace(batch.ErrorFileId))
-            return new BatchApplyResult(0, 0, ResultsNotReadyErrorMessage);
+            return new BatchApplyResult(0, 0, ResultsNotReadyErrorMessage, Array.Empty<DateTime>());
 
         var outputLines = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var outputErrors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -184,10 +184,11 @@ public class SummarizationBatchService
         }
 
         if (outputLines.Count == 0 && outputErrors.Count == 0)
-            return new BatchApplyResult(0, 0, ResultsNotReadyErrorMessage);
+            return new BatchApplyResult(0, 0, ResultsNotReadyErrorMessage, Array.Empty<DateTime>());
 
         var successCount = 0;
         var failedCount = 0;
+        var succeededDays = new List<DateTime>();
 
         foreach (var item in items)
         {
@@ -231,6 +232,7 @@ public class SummarizationBatchService
             await _summarizationService.StoreDaySummaryAsync(payload, bullets);
             await _databaseService.UpdateSummarizationBatchItemStatusAsync(
                 item.BatchId, item.Day, SummarizationBatchItemStatuses.Succeeded, null);
+            succeededDays.Add(item.Day.Date);
             successCount++;
         }
 
@@ -240,7 +242,7 @@ public class SummarizationBatchService
             batch.LastError = "One or more batch items failed.";
         await _databaseService.UpdateSummarizationBatchAsync(batch);
 
-        return new BatchApplyResult(successCount, failedCount, null);
+        return new BatchApplyResult(successCount, failedCount, null, succeededDays);
     }
 
     public async Task<List<SummarizationBatch>> GetActiveBatchesAsync()
@@ -554,4 +556,4 @@ public sealed record OpenAiBatchSnapshot(
     string? ErrorFileId,
     string? LastError);
 
-public sealed record BatchApplyResult(int Succeeded, int Failed, string? ErrorMessage);
+public sealed record BatchApplyResult(int Succeeded, int Failed, string? ErrorMessage, IReadOnlyList<DateTime> SucceededDays);

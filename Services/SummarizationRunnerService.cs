@@ -529,6 +529,17 @@ public class SummarizationRunnerService
                         }
 
                         applyNotReadyAttempts = 0;
+                        foreach (var summarizedDay in applyResult.SucceededDays)
+                        {
+                            DaySummarized?.Invoke(this, summarizedDay);
+                        }
+
+                        if (applyResult.Succeeded > 0)
+                        {
+                            DaysSummarized += applyResult.Succeeded;
+                            PendingDays = Math.Max(0, PendingDays - applyResult.Succeeded);
+                        }
+
                         Status = applyResult.Failed > 0
                             ? $"Partial Failure: {applyResult.Succeeded} succeeded, {applyResult.Failed} failed."
                             : $"Completed: {applyResult.Succeeded} days summarized.";
