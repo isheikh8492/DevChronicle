@@ -475,6 +475,8 @@ public class SummarizationRunnerService
                 SettingsService.SummarizationBatchPollIntervalSecondsKey,
                 30);
             pollIntervalSeconds = Math.Clamp(pollIntervalSeconds, 5, 300);
+            var applyNotReadyAttempts = 0;
+            const int MaxApplyNotReadyAttempts = 20;
 
             while (true)
             {
@@ -485,14 +487,48 @@ public class SummarizationRunnerService
                     Status = $"Batch {batch.Status} ({batch.OpenAiBatchId})";
                     PublishState();
 
-                    if (string.Equals(batch.Status, SummarizationBatchStatuses.Completed, StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(batch.Status, SummarizationBatchStatuses.Applying, StringComparison.OrdinalIgnoreCase))
+                    var shouldTryApply =
+                        string.Equals(batch.Status, SummarizationBatchStatuses.Completed, StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(batch.Status, SummarizationBatchStatuses.Applying, StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(batch.Status, SummarizationBatchStatuses.Failed, StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(batch.Status, SummarizationBatchStatuses.Canceled, StringComparison.OrdinalIgnoreCase);
+
+                    if (shouldTryApply)
                     {
                         Status = "Applying batch results...";
                         PublishState();
                         var applyResult = await Task.Run(
                             async () => await _summarizationBatchService.ApplyBatchResultsAsync(localBatchId, cancellationToken),
                             cancellationToken);
+
+                        if (string.Equals(
+                                applyResult.ErrorMessage,
+                                SummarizationBatchService.ResultsNotReadyErrorMessage,
+                                StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (string.Equals(batch.Status, SummarizationBatchStatuses.Canceled, StringComparison.OrdinalIgnoreCase))
+                            {
+                                CancelOperation("Batch canceled.");
+                                return;
+                            }
+
+                            applyNotReadyAttempts++;
+                            if (applyNotReadyAttempts >= MaxApplyNotReadyAttempts)
+                            {
+                                var failureDetail = string.Equals(batch.Status, SummarizationBatchStatuses.Failed, StringComparison.OrdinalIgnoreCase)
+                                    ? $"Batch failed: {batch.LastError ?? "Unknown error"}"
+                                    : "Batch finished but result files never became available.";
+                                FailOperation(failureDetail, "Retry pending batch.");
+                                return;
+                            }
+
+                            Status = $"Batch finished, waiting for result files ({applyNotReadyAttempts}/{MaxApplyNotReadyAttempts})...";
+                            PublishState();
+                            await Task.Delay(TimeSpan.FromSeconds(pollIntervalSeconds), cancellationToken);
+                            continue;
+                        }
+
+                        applyNotReadyAttempts = 0;
                         Status = applyResult.Failed > 0
                             ? $"Partial Failure: {applyResult.Succeeded} succeeded, {applyResult.Failed} failed."
                             : $"Completed: {applyResult.Succeeded} days summarized.";
@@ -504,17 +540,6 @@ public class SummarizationRunnerService
                         return;
                     }
 
-                    if (string.Equals(batch.Status, SummarizationBatchStatuses.Canceled, StringComparison.OrdinalIgnoreCase))
-                    {
-                        CancelOperation("Batch canceled.");
-                        return;
-                    }
-
-                    if (string.Equals(batch.Status, SummarizationBatchStatuses.Failed, StringComparison.OrdinalIgnoreCase))
-                    {
-                        FailOperation($"Batch failed: {batch.LastError ?? "Unknown error"}", "Retry pending batch.");
-                        return;
-                    }
                 }
                 catch (Exception ex) when (IsRetryableNetworkError(ex.Message))
                 {

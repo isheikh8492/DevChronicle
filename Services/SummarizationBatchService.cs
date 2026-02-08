@@ -8,6 +8,8 @@ namespace DevChronicle.Services;
 
 public class SummarizationBatchService
 {
+    public const string ResultsNotReadyErrorMessage = "Batch result files are not ready yet.";
+
     private static readonly HttpClient Http = new HttpClient
     {
         BaseAddress = new Uri("https://api.openai.com/v1/")
@@ -150,6 +152,22 @@ public class SummarizationBatchService
         if (string.IsNullOrWhiteSpace(apiKey))
             throw new InvalidOperationException("Missing OPENAI_API_KEY. Set it in Settings or environment.");
 
+        // Refresh once right before apply so we do not miss newly materialized output/error file ids.
+        if (!string.IsNullOrWhiteSpace(batch.OpenAiBatchId))
+        {
+            var latest = await GetBatchAsync(batch.OpenAiBatchId, apiKey, cancellationToken);
+            batch.Status = MapBatchStatus(latest.Status);
+            batch.OutputFileId = latest.OutputFileId;
+            batch.ErrorFileId = latest.ErrorFileId;
+            batch.UpdatedAt = DateTime.UtcNow;
+            if (!string.IsNullOrWhiteSpace(latest.LastError))
+                batch.LastError = latest.LastError;
+            await _databaseService.UpdateSummarizationBatchAsync(batch);
+        }
+
+        if (string.IsNullOrWhiteSpace(batch.OutputFileId) && string.IsNullOrWhiteSpace(batch.ErrorFileId))
+            return new BatchApplyResult(0, 0, ResultsNotReadyErrorMessage);
+
         var outputLines = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var outputErrors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
@@ -164,6 +182,9 @@ public class SummarizationBatchService
             var errorJsonl = await DownloadFileContentAsync(batch.ErrorFileId, apiKey, cancellationToken);
             ParseErrorJsonl(errorJsonl, outputErrors);
         }
+
+        if (outputLines.Count == 0 && outputErrors.Count == 0)
+            return new BatchApplyResult(0, 0, ResultsNotReadyErrorMessage);
 
         var successCount = 0;
         var failedCount = 0;
@@ -283,6 +304,7 @@ public class SummarizationBatchService
                     await _databaseService.MarkPendingSummarizationBatchItemsFailedAsync(
                         batch.Id,
                         "Batch became terminal before cancel completed.");
+                    await TryApplyAvailableResultsAsync(batch.Id, cancellationToken);
                     return false;
                 }
 
@@ -295,6 +317,7 @@ public class SummarizationBatchService
         batch.LastError = "Canceled by user.";
         await _databaseService.UpdateSummarizationBatchAsync(batch);
         await _databaseService.MarkPendingSummarizationBatchItemsFailedAsync(batch.Id, "Canceled by user.");
+        await TryApplyAvailableResultsAsync(batch.Id, cancellationToken);
         return true;
     }
 
@@ -444,7 +467,15 @@ public class SummarizationBatchService
             var statusCode = statusCodeProp.GetInt32();
             if (statusCode < 200 || statusCode >= 300)
             {
-                errors[customId] = $"HTTP {statusCode} returned in batch item response.";
+                string details = $"HTTP {statusCode} returned in batch item response.";
+                if (responseProp.TryGetProperty("body", out var errorBodyProp) &&
+                    errorBodyProp.ValueKind == JsonValueKind.Object &&
+                    errorBodyProp.TryGetProperty("error", out var apiErrorProp))
+                {
+                    details = apiErrorProp.ToString() ?? details;
+                }
+
+                errors[customId] = details;
                 continue;
             }
 
@@ -498,6 +529,20 @@ public class SummarizationBatchService
                 ? errorProp.ToString()
                 : "Batch item failed without error details.";
             errors[customId] = errorText;
+        }
+    }
+
+    private async Task TryApplyAvailableResultsAsync(int localBatchId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await ApplyBatchResultsAsync(localBatchId, cancellationToken);
+            if (string.Equals(result.ErrorMessage, ResultsNotReadyErrorMessage, StringComparison.OrdinalIgnoreCase))
+                return;
+        }
+        catch
+        {
+            // Best-effort salvage path during cancellation; stop flow should not fail if apply is unavailable.
         }
     }
 }
