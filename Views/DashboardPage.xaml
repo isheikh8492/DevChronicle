@@ -4,61 +4,102 @@
       xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
       Title="Dashboard"
       Foreground="{DynamicResource TextFillColorPrimaryBrush}">
-
     <ScrollViewer>
         <StackPanel Margin="56,24,56,24">
             <TextBlock
                 FontSize="28"
                 FontWeight="SemiBold"
-                Text="Welcome to DevChronicle"
+                Text="Dashboard"
                 Margin="0,0,0,8"/>
             <TextBlock
                 FontSize="14"
                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                Text="Session-based developer diary and resume generator from Git history."
-                Margin="0,0,0,32"/>
+                Text="Quick controls and status."
+                Margin="0,0,0,24"/>
 
-            <ui:CardExpander Icon="{ui:SymbolIcon Rocket24}" Margin="0,0,0,8">
-                <ui:CardExpander.Header>
-                    <StackPanel>
-                        <TextBlock FontSize="16" FontWeight="Medium" Text="Quick Start" />
-                        <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Get started with DevChronicle" />
+            <Grid Margin="0,0,0,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <ui:Card Grid.Column="0">
+                    <StackPanel Margin="16">
+                        <TextBlock Text="Total Sessions" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        <TextBlock Text="{Binding TotalSessions}" FontSize="24" FontWeight="SemiBold" />
                     </StackPanel>
-                </ui:CardExpander.Header>
-                <StackPanel Margin="0,12,0,0">
-                    <ui:Button
-                        Content="Create New Session"
-                        Icon="{ui:SymbolIcon Add24}"
-                        Appearance="Primary"
-                        Margin="0,0,0,8"
-                        HorizontalAlignment="Left"/>
-                    <ui:Button
-                        Content="Open Existing Session"
-                        Icon="{ui:SymbolIcon FolderOpen24}"
-                        Margin="0,0,0,8"
-                        HorizontalAlignment="Left"/>
-                    <ui:Button
-                        Content="Export Results"
-                        Icon="{ui:SymbolIcon ArrowExport24}"
-                        HorizontalAlignment="Left"/>
+                </ui:Card>
+                <ui:Card Grid.Column="2">
+                    <StackPanel Margin="16">
+                        <TextBlock Text="Pending Days" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        <TextBlock Text="{Binding PendingDays}" FontSize="24" FontWeight="SemiBold" />
+                    </StackPanel>
+                </ui:Card>
+                <ui:Card Grid.Column="4">
+                    <StackPanel Margin="16">
+                        <TextBlock Text="Summarized Days" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        <TextBlock Text="{Binding SummarizedDays}" FontSize="24" FontWeight="SemiBold" />
+                    </StackPanel>
+                </ui:Card>
+            </Grid>
+
+            <ui:Card Margin="0,0,0,12">
+                <StackPanel Margin="16">
+                    <TextBlock Text="Current Session" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Text="{Binding ActiveSessionText}" TextWrapping="Wrap" Margin="0,2,0,10" />
+
+                    <TextBlock Text="Summarization Status" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Text="{Binding CurrentSummarizationStatus}" TextWrapping="Wrap" Margin="0,2,0,12" />
+
+                    <StackPanel Orientation="Horizontal">
+                        <ui:Button Content="Resume Work"
+                                   Icon="{ui:SymbolIcon Play24}"
+                                   Appearance="Primary"
+                                   Margin="0,0,8,0"
+                                   Command="{Binding ResumeLastSessionCommand}" />
+                        <ui:Button Content="Summarize Pending"
+                                   Icon="{ui:SymbolIcon Sparkle24}"
+                                   Command="{Binding SummarizePendingCurrentSessionCommand}" />
+                    </StackPanel>
                 </StackPanel>
-            </ui:CardExpander>
+            </ui:Card>
 
-            <ui:Card Margin="0,8,0,8">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <ui:SymbolIcon Grid.Column="0" Symbol="Info24" Margin="0,0,16,0" FontSize="20"/>
-                    <StackPanel Grid.Column="1">
-                        <TextBlock FontSize="14" FontWeight="Medium" Text="Recent Activity" Margin="0,0,0,4"/>
-                        <TextBlock
-                            FontSize="12"
-                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="No sessions found. Create a new session to start mining your Git history."/>
-                    </StackPanel>
-                </Grid>
+            <ui:Card>
+                <StackPanel Margin="16">
+                    <TextBlock Text="Recent Sessions" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8" />
+                    <TextBlock Text="No sessions yet."
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Visibility="{Binding HasRecentSessions, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
+                    <ItemsControl ItemsSource="{Binding RecentSessions}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="6"
+                                        Padding="10"
+                                        Margin="0,0,0,8">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding RepoPath}" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                        </StackPanel>
+                                        <ui:Button Grid.Column="1"
+                                                   Content="Open"
+                                                   Margin="8,0,0,0"
+                                                   Command="{Binding DataContext.OpenRecentSessionCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                                                   CommandParameter="{Binding}" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
             </ui:Card>
         </StackPanel>
     </ScrollViewer>
