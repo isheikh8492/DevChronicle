@@ -55,6 +55,9 @@ public partial class SettingsViewModel : ObservableObject
     private int summarizationMaxTotalBulletsPerDay;
 
     [ObservableProperty]
+    private int summarizationNetworkRetryWindowMinutes;
+
+    [ObservableProperty]
     private string defaultExportDirectory = string.Empty;
 
     private string _actualApiKey = string.Empty;
@@ -85,6 +88,7 @@ public partial class SettingsViewModel : ObservableObject
         SelectedSummarizationModel = await _settingsService.GetAsync(SettingsService.SummarizationModelKey, "gpt-4o-mini");
         SummarizationMaxCompletionTokensPerCall = await _settingsService.GetAsync(SettingsService.SummarizationMaxCompletionTokensPerCallKey, 3000);
         SummarizationMaxTotalBulletsPerDay = await _settingsService.GetAsync(SettingsService.SummarizationMaxTotalBulletsPerDayKey, 40);
+        SummarizationNetworkRetryWindowMinutes = await _settingsService.GetAsync(SettingsService.SummarizationNetworkRetryWindowMinutesKey, 5);
         var fallbackExportDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "DevChronicleExports");
         DefaultExportDirectory = await _settingsService.GetAsync(SettingsService.ExportDefaultDirectoryKey, fallbackExportDir);
         UpdateDisplayedApiKey();
@@ -133,6 +137,7 @@ public partial class SettingsViewModel : ObservableObject
 
     partial void OnSummarizationMaxCompletionTokensPerCallChanged(int value) => _ = _settingsService.SetAsync(SettingsService.SummarizationMaxCompletionTokensPerCallKey, value);
     partial void OnSummarizationMaxTotalBulletsPerDayChanged(int value) => _ = _settingsService.SetAsync(SettingsService.SummarizationMaxTotalBulletsPerDayKey, value);
+    partial void OnSummarizationNetworkRetryWindowMinutesChanged(int value) => _ = _settingsService.SetAsync(SettingsService.SummarizationNetworkRetryWindowMinutesKey, Math.Clamp(value, 1, 60));
     partial void OnSelectedSummarizationModelChanged(string value) =>
         _ = _settingsService.SetAsync(
             SettingsService.SummarizationModelKey,

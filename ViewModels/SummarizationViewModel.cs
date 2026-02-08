@@ -16,6 +16,8 @@ public partial class SummarizationViewModel : ObservableObject
     private const int InterDayDelayMilliseconds = 2000;
     private const int RateLimitBaseDelayMilliseconds = 3000;
     private const int MaxRateLimitRetries = 3;
+    private const int NetworkRetryBaseDelayMilliseconds = 5000;
+    private const int NetworkRetryMaxDelayMilliseconds = 30000;
 
     private readonly SummarizationService _summarizationService;
     private readonly DatabaseService _databaseService;
@@ -199,11 +201,11 @@ public partial class SummarizationViewModel : ObservableObject
         try
         {
             var maxBullets = await _settingsService.GetAsync(SettingsService.MaxBulletsPerDayKey, 6);
-            var result = await _summarizationService.SummarizeDayAsync(
+            var result = await SummarizeDayWithRetryAsync(
                 session.Id,
                 day.Date,
-                maxBullets: maxBullets,
-                cancellationToken: _cancellationTokenSource.Token);
+                maxBullets,
+                _cancellationTokenSource.Token);
 
             if (result.Success)
             {
@@ -358,7 +360,16 @@ public partial class SummarizationViewModel : ObservableObject
         int maxBullets,
         CancellationToken cancellationToken)
     {
-        for (var attempt = 0; attempt <= MaxRateLimitRetries; attempt++)
+        var configuredRetryWindowMinutes = await _settingsService.GetAsync(
+            SettingsService.SummarizationNetworkRetryWindowMinutesKey,
+            5);
+        var networkRetryWindowMinutes = Math.Clamp(configuredRetryWindowMinutes, 1, 60);
+
+        var rateLimitAttempt = 0;
+        var networkAttempt = 0;
+        var networkRetryDeadline = DateTime.UtcNow.AddMinutes(networkRetryWindowMinutes);
+
+        while (true)
         {
             var result = await _summarizationService.SummarizeDayAsync(
                 sessionId,
@@ -369,23 +380,37 @@ public partial class SummarizationViewModel : ObservableObject
             if (result.Success)
                 return result;
 
-            if (!IsRetryableApiError(result.ErrorMessage) || attempt == MaxRateLimitRetries)
+            if (IsRetryableNetworkError(result.ErrorMessage))
+            {
+                var now = DateTime.UtcNow;
+                if (now >= networkRetryDeadline)
+                    return result;
+
+                var networkDelay = Math.Min(
+                    NetworkRetryBaseDelayMilliseconds * (int)Math.Pow(2, Math.Min(networkAttempt, 4)),
+                    NetworkRetryMaxDelayMilliseconds);
+                var remaining = networkRetryDeadline - now;
+                if (remaining.TotalMilliseconds < networkDelay)
+                    networkDelay = Math.Max(1000, (int)remaining.TotalMilliseconds);
+
+                var remainingMinutes = Math.Max(1, (int)Math.Ceiling(remaining.TotalMinutes));
+                Status = $"Network issue detected. Retrying in {Math.Max(1, networkDelay / 1000)}s (up to {remainingMinutes} more min)...";
+                networkAttempt++;
+                await Task.Delay(networkDelay, cancellationToken);
+                continue;
+            }
+
+            if (!IsRetryableApiError(result.ErrorMessage) || rateLimitAttempt >= MaxRateLimitRetries)
                 return result;
 
             var delay = Math.Min(
-                RateLimitBaseDelayMilliseconds * (int)Math.Pow(2, attempt),
+                RateLimitBaseDelayMilliseconds * (int)Math.Pow(2, rateLimitAttempt),
                 30000);
 
             Status = $"Rate-limited by OpenAI. Retrying in {Math.Max(1, delay / 1000)}s...";
+            rateLimitAttempt++;
             await Task.Delay(delay, cancellationToken);
         }
-
-        return new SummarizationResult
-        {
-            Success = false,
-            Day = day,
-            ErrorMessage = "Summarization retry loop exhausted unexpectedly."
-        };
     }
 
     private static bool IsRetryableApiError(string? errorMessage)
@@ -400,5 +425,23 @@ public partial class SummarizationViewModel : ObservableObject
                text.Contains("too many requests") ||
                text.Contains("temporarily unavailable") ||
                text.Contains("timeout");
+    }
+
+    private static bool IsRetryableNetworkError(string? errorMessage)
+    {
+        if (string.IsNullOrWhiteSpace(errorMessage))
+            return false;
+
+        var text = errorMessage.ToLowerInvariant();
+        return text.Contains("no such host is known") ||
+               text.Contains("name or service not known") ||
+               text.Contains("temporary failure in name resolution") ||
+               text.Contains("connection reset") ||
+               text.Contains("connection refused") ||
+               text.Contains("actively refused") ||
+               text.Contains("network is unreachable") ||
+               text.Contains("an error occurred while sending the request") ||
+               text.Contains("httpclient") ||
+               text.Contains("unable to read data from the transport connection");
     }
 }
