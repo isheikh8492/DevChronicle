@@ -9,6 +9,10 @@ namespace DevChronicle.Services;
 
 public class SummarizationService
 {
+    private const int DefaultMaxPromptCharsPerCall = 45000;
+    private const int ChunkBulletCap = 12;
+    private const int MaxAdaptiveSplitDepth = 8;
+    private const int MinDiffCharsForSplit = 2000;
     private readonly DatabaseService _databaseService;
     private readonly ClusteringService _clusteringService;
     private readonly SettingsService _settingsService;
@@ -30,11 +34,11 @@ Output requirements:
 Quality requirements:
 - Every bullet should include WHAT changed, WHERE it changed, HOW it was done, and WHY it was done when evidence supports it.
 - If WHY is missing, do not invent it; keep the bullet factual and concise.
-- If you infer beyond explicit evidence, include "[inferred]".
+- If you infer beyond explicit evidence, keep it minimal and grounded in the provided evidence.
 - Do not fabricate facts or claim completion without evidence.
 - Prefer dense, specific, technically traceable bullets over vague summaries.
 - Do not include churn/count noise (for example +X/-Y line counts) unless explicitly requested.
-- Do not use hedging filler such as "likely", "probably", "appears to", or "aimed to" unless explicitly marked with "[uncertain]" and tied to missing evidence.
+ - Do not use hedging filler such as "likely", "probably", "appears to", or "aimed to".
 - Do not output standalone meta-only bullets such as "no evidence found", "missing evidence", or bracket-only notes.
 - Do not output standalone provenance tags like "[multiple commits]" or "[file diff]"; fold provenance into normal sentence text if needed.
 
@@ -156,13 +160,54 @@ Coverage (include only if evidenced):
                 options.IncludeDiffs,
                 commitDiffBySha);
 
-            bulletsText = await CallOpenAIWithContinuationAsync(
-                masterPrompt,
-                prompt,
-                apiKey,
-                maxBullets: effectiveMaxBullets,
-                maxCompletionTokensPerCall: maxCompletionTokensPerCall,
-                cancellationToken);
+            var shouldChunk = ShouldUseChunkedSummarization(prompt, commits.Count);
+            if (shouldChunk)
+            {
+                bulletsText = await SummarizeWithChunkingAsync(
+                    day,
+                    commits,
+                    session,
+                    dayRecord,
+                    branchRows,
+                    integrationEvents,
+                    options.IncludeDiffs,
+                    commitDiffBySha,
+                    effectiveMaxBullets,
+                    maxCompletionTokensPerCall,
+                    masterPrompt,
+                    apiKey,
+                    cancellationToken);
+            }
+            else
+            {
+                try
+                {
+                    bulletsText = await CallOpenAIWithContinuationAsync(
+                        masterPrompt,
+                        prompt,
+                        apiKey,
+                        maxBullets: effectiveMaxBullets,
+                        maxCompletionTokensPerCall: maxCompletionTokensPerCall,
+                        cancellationToken);
+                }
+                catch (Exception ex) when (IsRequestTooLargeError(ex.Message))
+                {
+                    bulletsText = await SummarizeWithChunkingAsync(
+                        day,
+                        commits,
+                        session,
+                        dayRecord,
+                        branchRows,
+                        integrationEvents,
+                        options.IncludeDiffs,
+                        commitDiffBySha,
+                        effectiveMaxBullets,
+                        maxCompletionTokensPerCall,
+                        masterPrompt,
+                        apiKey,
+                        cancellationToken);
+                }
+            }
             result.UsedAI = true;
 
             // Validate and clean bullets
@@ -303,10 +348,10 @@ Coverage (include only if evidenced):
         sb.AppendLine($"Generate up to {maxBullets} dense, technical diary bullets from this evidence.");
         sb.AppendLine("Per bullet, include WHAT + WHERE + HOW + WHY when evidence supports it.");
         sb.AppendLine("If WHY is not evidenced, do not invent WHY; keep the bullet factual and skip speculative rationale.");
-        sb.AppendLine("If you infer beyond explicit facts, tag bullet with `[inferred]`.");
+        sb.AppendLine("If you infer beyond explicit facts, keep it minimal and clearly grounded in evidence.");
         sb.AppendLine("Do not fabricate facts.");
         sb.AppendLine("Do not include churn/count noise (+X/-Y) unless explicitly requested.");
-        sb.AppendLine("Avoid hedging filler like 'likely', 'probably', 'appears to', 'aimed to' unless explicitly marked `[uncertain]` with missing evidence.");
+        sb.AppendLine("Avoid hedging filler like 'likely', 'probably', 'appears to', 'aimed to'.");
         sb.AppendLine("Do not output standalone bullets that only say evidence is missing; omit those categories instead.");
         sb.AppendLine("Do not output standalone bracket-only provenance notes (e.g. `[multiple commits]`, `[file diff]`).");
         sb.AppendLine("Coverage targets (include if evidenced): feature/bug/maintenance, commit intent, file-level changes/risk, architecture decisions/tradeoffs, UI/UX behavior, backend/data impacts, branch/integration context, testing/debugging/validation, blockers, experiments, unresolved next steps.");
@@ -514,6 +559,361 @@ Coverage (include only if evidenced):
         if (value < min) return min;
         if (value > max) return max;
         return value;
+    }
+
+    private static bool ShouldUseChunkedSummarization(string prompt, int commitCount)
+    {
+        return prompt.Length > DefaultMaxPromptCharsPerCall;
+    }
+
+    private static bool IsRequestTooLargeError(string? errorMessage)
+    {
+        if (string.IsNullOrWhiteSpace(errorMessage))
+            return false;
+
+        var text = errorMessage.ToLowerInvariant();
+        return text.Contains("request too large", StringComparison.Ordinal) ||
+               text.Contains("context_length_exceeded", StringComparison.Ordinal) ||
+               text.Contains("maximum context length", StringComparison.Ordinal) ||
+               text.Contains("tokens per minute", StringComparison.Ordinal);
+    }
+
+    private async Task<string> SummarizeWithChunkingAsync(
+        DateTime day,
+        List<Commit> commits,
+        Session? session,
+        Models.Day? dayRecord,
+        List<CommitBranchRow> branchRows,
+        List<IntegrationEvent> integrationEvents,
+        bool includeDiffs,
+        IReadOnlyDictionary<string, string> commitDiffBySha,
+        int maxBullets,
+        int maxCompletionTokensPerCall,
+        string masterPrompt,
+        string apiKey,
+        CancellationToken cancellationToken)
+    {
+        var chunks = BuildCommitChunks(commits, includeDiffs, commitDiffBySha, DefaultMaxPromptCharsPerCall);
+        if (chunks.Count == 0)
+            chunks.Add(commits.OrderBy(c => c.AuthorDate).ToList());
+
+        var partialBullets = new List<string>();
+        var chunkBulletBudget = Math.Max(maxBullets, ChunkBulletCap);
+
+        foreach (var chunk in chunks)
+        {
+            var chunkParsed = await SummarizeChunkAdaptiveAsync(
+                day,
+                chunk,
+                session,
+                dayRecord,
+                branchRows,
+                integrationEvents,
+                includeDiffs,
+                commitDiffBySha,
+                chunkBulletBudget,
+                maxCompletionTokensPerCall,
+                masterPrompt,
+                apiKey,
+                cancellationToken,
+                depth: 0);
+            AppendUniqueBullets(partialBullets, chunkParsed);
+        }
+
+        if (partialBullets.Count == 0)
+            return string.Empty;
+
+        return await SynthesizePartialBulletsAdaptiveAsync(
+            day,
+            partialBullets,
+            maxBullets,
+            maxCompletionTokensPerCall,
+            masterPrompt,
+            apiKey,
+            cancellationToken,
+            depth: 0);
+    }
+
+    private static List<List<Commit>> BuildCommitChunks(
+        List<Commit> commits,
+        bool includeDiffs,
+        IReadOnlyDictionary<string, string> commitDiffBySha,
+        int maxPromptChars)
+    {
+        var ordered = commits.OrderBy(c => c.AuthorDate).ToList();
+        var chunks = new List<List<Commit>>();
+        var current = new List<Commit>();
+        var currentChars = 4000;
+
+        foreach (var commit in ordered)
+        {
+            var estimate = EstimateCommitEvidenceChars(commit, includeDiffs, commitDiffBySha);
+            if (current.Count > 0 && currentChars + estimate > maxPromptChars)
+            {
+                chunks.Add(current);
+                current = new List<Commit>();
+                currentChars = 4000;
+            }
+
+            current.Add(commit);
+            currentChars += estimate;
+        }
+
+        if (current.Count > 0)
+            chunks.Add(current);
+
+        return chunks;
+    }
+
+    private static int EstimateCommitEvidenceChars(
+        Commit commit,
+        bool includeDiffs,
+        IReadOnlyDictionary<string, string> commitDiffBySha)
+    {
+        var estimate = 400 + commit.Subject.Length + commit.FilesJson.Length;
+        if (includeDiffs && commitDiffBySha.TryGetValue(commit.Sha, out var diff))
+            estimate += diff.Length + 200;
+        return estimate;
+    }
+
+    private async Task<List<string>> SummarizeChunkAdaptiveAsync(
+        DateTime day,
+        List<Commit> chunk,
+        Session? session,
+        Models.Day? dayRecord,
+        List<CommitBranchRow> branchRows,
+        List<IntegrationEvent> integrationEvents,
+        bool includeDiffs,
+        IReadOnlyDictionary<string, string> commitDiffBySha,
+        int maxBullets,
+        int maxCompletionTokensPerCall,
+        string masterPrompt,
+        string apiKey,
+        CancellationToken cancellationToken,
+        int depth)
+    {
+        var orderedChunk = chunk.OrderBy(c => c.AuthorDate).ToList();
+        var chunkSet = new HashSet<string>(orderedChunk.Select(c => c.Sha), StringComparer.OrdinalIgnoreCase);
+        var chunkWorkUnits = _clusteringService.ClusterCommits(orderedChunk);
+        var chunkBranches = branchRows.Where(b => chunkSet.Contains(b.Sha)).ToList();
+        var chunkIntegrations = integrationEvents
+            .Where(e => !string.IsNullOrWhiteSpace(e.AnchorSha) && chunkSet.Contains(e.AnchorSha!))
+            .ToList();
+        var chunkDiffs = commitDiffBySha
+            .Where(kvp => chunkSet.Contains(kvp.Key))
+            .ToDictionary(kvp => kvp.Key, kvp => kvp.Value, StringComparer.OrdinalIgnoreCase);
+
+        var chunkPrompt = BuildPrompt(
+            day,
+            orderedChunk,
+            chunkWorkUnits,
+            maxBullets,
+            session,
+            dayRecord,
+            chunkBranches,
+            chunkIntegrations,
+            includeDiffs,
+            chunkDiffs);
+
+        try
+        {
+            var chunkText = await CallOpenAIWithContinuationAsync(
+                masterPrompt,
+                chunkPrompt,
+                apiKey,
+                maxBullets: maxBullets,
+                maxCompletionTokensPerCall: maxCompletionTokensPerCall,
+                cancellationToken);
+            return ValidateBullets(chunkText, maxBullets);
+        }
+        catch (Exception ex) when (IsRequestTooLargeError(ex.Message) && depth < MaxAdaptiveSplitDepth)
+        {
+            if (orderedChunk.Count > 1)
+            {
+                var (left, right) = SplitCommitListInHalf(orderedChunk);
+                var merged = new List<string>();
+                var leftBullets = await SummarizeChunkAdaptiveAsync(
+                    day, left, session, dayRecord, branchRows, integrationEvents, includeDiffs, commitDiffBySha,
+                    maxBullets, maxCompletionTokensPerCall, masterPrompt, apiKey, cancellationToken, depth + 1);
+                AppendUniqueBullets(merged, leftBullets);
+                var rightBullets = await SummarizeChunkAdaptiveAsync(
+                    day, right, session, dayRecord, branchRows, integrationEvents, includeDiffs, commitDiffBySha,
+                    maxBullets, maxCompletionTokensPerCall, masterPrompt, apiKey, cancellationToken, depth + 1);
+                AppendUniqueBullets(merged, rightBullets);
+                return merged;
+            }
+
+            if (!includeDiffs || orderedChunk.Count == 0)
+                throw;
+
+            var single = orderedChunk[0];
+            if (!chunkDiffs.TryGetValue(single.Sha, out var fullDiff) || string.IsNullOrWhiteSpace(fullDiff) || fullDiff.Length < MinDiffCharsForSplit)
+                throw;
+
+            var (leftDiff, rightDiff) = SplitTextInHalf(fullDiff);
+            if (string.IsNullOrWhiteSpace(leftDiff) || string.IsNullOrWhiteSpace(rightDiff))
+                throw;
+
+            var mergedFromDiffHalves = new List<string>();
+
+            var leftOverrides = new Dictionary<string, string>(commitDiffBySha, StringComparer.OrdinalIgnoreCase)
+            {
+                [single.Sha] = leftDiff
+            };
+            var leftHalfBullets = await SummarizeChunkAdaptiveAsync(
+                day,
+                orderedChunk,
+                session,
+                dayRecord,
+                branchRows,
+                integrationEvents,
+                includeDiffs,
+                leftOverrides,
+                maxBullets,
+                maxCompletionTokensPerCall,
+                masterPrompt,
+                apiKey,
+                cancellationToken,
+                depth + 1);
+            AppendUniqueBullets(mergedFromDiffHalves, leftHalfBullets);
+
+            var rightOverrides = new Dictionary<string, string>(commitDiffBySha, StringComparer.OrdinalIgnoreCase)
+            {
+                [single.Sha] = rightDiff
+            };
+            var rightHalfBullets = await SummarizeChunkAdaptiveAsync(
+                day,
+                orderedChunk,
+                session,
+                dayRecord,
+                branchRows,
+                integrationEvents,
+                includeDiffs,
+                rightOverrides,
+                maxBullets,
+                maxCompletionTokensPerCall,
+                masterPrompt,
+                apiKey,
+                cancellationToken,
+                depth + 1);
+            AppendUniqueBullets(mergedFromDiffHalves, rightHalfBullets);
+
+            return mergedFromDiffHalves;
+        }
+    }
+
+    private async Task<string> SynthesizePartialBulletsAdaptiveAsync(
+        DateTime day,
+        List<string> partialBullets,
+        int maxBullets,
+        int maxCompletionTokensPerCall,
+        string masterPrompt,
+        string apiKey,
+        CancellationToken cancellationToken,
+        int depth)
+    {
+        var synthesisPrompt = BuildChunkSynthesisPrompt(day, partialBullets, maxBullets);
+        try
+        {
+            return await CallOpenAIWithContinuationAsync(
+                masterPrompt,
+                synthesisPrompt,
+                apiKey,
+                maxBullets: maxBullets,
+                maxCompletionTokensPerCall: maxCompletionTokensPerCall,
+                cancellationToken);
+        }
+        catch (Exception ex) when (IsRequestTooLargeError(ex.Message) && depth < MaxAdaptiveSplitDepth && partialBullets.Count > 2)
+        {
+            var midpoint = partialBullets.Count / 2;
+            var left = partialBullets.Take(midpoint).ToList();
+            var right = partialBullets.Skip(midpoint).ToList();
+
+            var leftText = await SynthesizePartialBulletsAdaptiveAsync(
+                day,
+                left,
+                Math.Max(maxBullets, ChunkBulletCap),
+                maxCompletionTokensPerCall,
+                masterPrompt,
+                apiKey,
+                cancellationToken,
+                depth + 1);
+            var rightText = await SynthesizePartialBulletsAdaptiveAsync(
+                day,
+                right,
+                Math.Max(maxBullets, ChunkBulletCap),
+                maxCompletionTokensPerCall,
+                masterPrompt,
+                apiKey,
+                cancellationToken,
+                depth + 1);
+
+            var merged = new List<string>();
+            AppendUniqueBullets(merged, ValidateBullets(leftText, Math.Max(maxBullets, ChunkBulletCap)));
+            AppendUniqueBullets(merged, ValidateBullets(rightText, Math.Max(maxBullets, ChunkBulletCap)));
+
+            var finalPrompt = BuildChunkSynthesisPrompt(day, merged, maxBullets);
+            return await CallOpenAIWithContinuationAsync(
+                masterPrompt,
+                finalPrompt,
+                apiKey,
+                maxBullets: maxBullets,
+                maxCompletionTokensPerCall: maxCompletionTokensPerCall,
+                cancellationToken);
+        }
+    }
+
+    private static (List<Commit> left, List<Commit> right) SplitCommitListInHalf(List<Commit> commits)
+    {
+        var midpoint = commits.Count / 2;
+        if (midpoint <= 0)
+            midpoint = 1;
+        var left = commits.Take(midpoint).ToList();
+        var right = commits.Skip(midpoint).ToList();
+        if (right.Count == 0 && left.Count > 1)
+        {
+            right.Add(left[^1]);
+            left.RemoveAt(left.Count - 1);
+        }
+
+        return (left, right);
+    }
+
+    private static (string left, string right) SplitTextInHalf(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return (string.Empty, string.Empty);
+
+        var lines = text.Split('\n');
+        if (lines.Length < 2)
+            return (string.Empty, string.Empty);
+
+        var midpoint = lines.Length / 2;
+        if (midpoint <= 0)
+            midpoint = 1;
+        var left = string.Join('\n', lines.Take(midpoint));
+        var right = string.Join('\n', lines.Skip(midpoint));
+        return (left, right);
+    }
+
+    private static string BuildChunkSynthesisPrompt(DateTime day, List<string> partialBullets, int maxBullets)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("EVIDENCE_BUNDLE");
+        sb.AppendLine($"- Day: {day:yyyy-MM-dd}");
+        sb.AppendLine("- Source: chunked summaries from the same day.");
+        sb.AppendLine();
+        sb.AppendLine("Chunk bullets:");
+        foreach (var bullet in partialBullets)
+            sb.AppendLine(bullet);
+
+        sb.AppendLine();
+        sb.AppendLine($"Synthesize up to {maxBullets} final bullets.");
+        sb.AppendLine("Deduplicate overlapping points, preserve chronology, and keep concrete WHAT/WHERE/HOW/WHY when evidenced.");
+        sb.AppendLine("Output contract:");
+        sb.AppendLine("- Each bullet must start with '- '");
+        sb.AppendLine("- No headings, no numbering, no code fences, no preface/closing text");
+        return sb.ToString();
     }
 
     private string GenerateOfflineSummary(List<Commit> commits, List<WorkUnit> workUnits)

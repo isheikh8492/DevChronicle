@@ -13,6 +13,10 @@ namespace DevChronicle.ViewModels;
 /// </summary>
 public partial class SummarizationViewModel : ObservableObject
 {
+    private const int InterDayDelayMilliseconds = 2000;
+    private const int RateLimitBaseDelayMilliseconds = 3000;
+    private const int MaxRateLimitRetries = 3;
+
     private readonly SummarizationService _summarizationService;
     private readonly DatabaseService _databaseService;
     private readonly SessionContextService _sessionContext;
@@ -111,11 +115,11 @@ public partial class SummarizationViewModel : ObservableObject
                 UpdateOperation("Summarizing pending days", currentIndex, totalPending);
 
                 var maxBullets = await _settingsService.GetAsync(SettingsService.MaxBulletsPerDayKey, 6);
-                var result = await _summarizationService.SummarizeDayAsync(
+                var result = await SummarizeDayWithRetryAsync(
                     session.Id,
                     day.Date,
-                    maxBullets: maxBullets,
-                    cancellationToken: _cancellationTokenSource.Token);
+                    maxBullets,
+                    _cancellationTokenSource.Token);
 
                 if (result.Success)
                 {
@@ -129,6 +133,12 @@ public partial class SummarizationViewModel : ObservableObject
 
                     // Notify listeners that this day was summarized
                     DaySummarized?.Invoke(this, day.Date);
+
+                    if (currentIndex < totalPending && !_cancellationTokenSource.Token.IsCancellationRequested)
+                    {
+                        Status = $"Cooling down before next day ({InterDayDelayMilliseconds / 1000}s)...";
+                        await Task.Delay(InterDayDelayMilliseconds, _cancellationTokenSource.Token);
+                    }
                 }
                 else
                 {
@@ -159,6 +169,7 @@ public partial class SummarizationViewModel : ObservableObject
             IsSummarizing = false;
             _cancellationTokenSource?.Dispose();
             _cancellationTokenSource = null;
+            await UpdatePendingCountAsync();
         }
     }
 
@@ -339,5 +350,55 @@ public partial class SummarizationViewModel : ObservableObject
         OperationState = OperationState.NeedsInput;
         RecoverActionText = recoverAction;
         Status = OperationStatusFormatter.FormatTerminal(OperationState.NeedsInput, message);
+    }
+
+    private async Task<SummarizationResult> SummarizeDayWithRetryAsync(
+        int sessionId,
+        DateTime day,
+        int maxBullets,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; attempt <= MaxRateLimitRetries; attempt++)
+        {
+            var result = await _summarizationService.SummarizeDayAsync(
+                sessionId,
+                day,
+                maxBullets: maxBullets,
+                cancellationToken: cancellationToken);
+
+            if (result.Success)
+                return result;
+
+            if (!IsRetryableApiError(result.ErrorMessage) || attempt == MaxRateLimitRetries)
+                return result;
+
+            var delay = Math.Min(
+                RateLimitBaseDelayMilliseconds * (int)Math.Pow(2, attempt),
+                30000);
+
+            Status = $"Rate-limited by OpenAI. Retrying in {Math.Max(1, delay / 1000)}s...";
+            await Task.Delay(delay, cancellationToken);
+        }
+
+        return new SummarizationResult
+        {
+            Success = false,
+            Day = day,
+            ErrorMessage = "Summarization retry loop exhausted unexpectedly."
+        };
+    }
+
+    private static bool IsRetryableApiError(string? errorMessage)
+    {
+        if (string.IsNullOrWhiteSpace(errorMessage))
+            return false;
+
+        var text = errorMessage.ToLowerInvariant();
+        return text.Contains("429") ||
+               text.Contains("rate limit") ||
+               text.Contains("rate_limit") ||
+               text.Contains("too many requests") ||
+               text.Contains("temporarily unavailable") ||
+               text.Contains("timeout");
     }
 }
