@@ -262,7 +262,28 @@ public class SummarizationBatchService
             using var response = await Http.SendAsync(request, cancellationToken);
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
             if (!response.IsSuccessStatusCode)
+            {
+                // OpenAI can race to a terminal state between local polling intervals.
+                // In that case cancel returns 409 (cannot cancel failed/completed/cancelled batch).
+                // Treat it as a normal terminal transition instead of surfacing a stop failure.
+                if ((int)response.StatusCode == 409 &&
+                    body.Contains("Cannot cancel a batch with status", StringComparison.OrdinalIgnoreCase))
+                {
+                    var latest = await GetBatchAsync(batch.OpenAiBatchId, apiKey, cancellationToken);
+                    batch.Status = MapBatchStatus(latest.Status);
+                    batch.OutputFileId = latest.OutputFileId;
+                    batch.ErrorFileId = latest.ErrorFileId;
+                    batch.UpdatedAt = DateTime.UtcNow;
+                    batch.LastError = latest.LastError ?? batch.LastError;
+                    await _databaseService.UpdateSummarizationBatchAsync(batch);
+                    await _databaseService.MarkPendingSummarizationBatchItemsFailedAsync(
+                        batch.Id,
+                        "Batch became terminal before cancel completed.");
+                    return false;
+                }
+
                 throw new InvalidOperationException($"OpenAI API error: {response.StatusCode} - {body}");
+            }
         }
 
         batch.Status = SummarizationBatchStatuses.Canceled;
