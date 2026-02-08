@@ -14,8 +14,8 @@ public sealed class RateBudgetService
         int reservedOutputTokens,
         CancellationToken cancellationToken)
     {
-        var safeInput = Math.Max(1, estimatedInputTokens);
-        var safeOutput = Math.Max(1, reservedOutputTokens);
+        var requestedInput = Math.Max(1, estimatedInputTokens);
+        var requestedOutput = Math.Max(1, reservedOutputTokens);
 
         while (true)
         {
@@ -30,6 +30,10 @@ public sealed class RateBudgetService
                 var reqLimit = Math.Max(1, (int)Math.Floor(limits.RequestsPerMinute * SafetyFactor));
                 var inLimit = Math.Max(1, (int)Math.Floor(limits.InputTokensPerMinute * SafetyFactor));
                 var outLimit = Math.Max(1, (int)Math.Floor(limits.OutputTokensPerMinute * SafetyFactor));
+                // Prevent impossible waits: if one request is larger than a full minute budget,
+                // reserve at most one-minute capacity so it can proceed when the window clears.
+                var safeInput = Math.Min(requestedInput, inLimit);
+                var safeOutput = Math.Min(requestedOutput, outLimit);
 
                 var requestCount = _reservations.Count;
                 var inputTotal = _reservations.Sum(r => r.InputTokens);
