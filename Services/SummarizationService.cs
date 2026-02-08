@@ -16,6 +16,7 @@ public class SummarizationService
     private readonly SettingsService _settingsService;
     private readonly GitService _gitService;
     private readonly IReadOnlyList<ISummarizationProvider> _providers;
+    private readonly RateBudgetService _rateBudgetService;
     private string _modelName = "gpt-4o-mini";
     private const string PromptVersion = "v2";
     private const int DefaultMaxCompletionTokensPerCall = 3000;
@@ -61,12 +62,14 @@ Coverage (include only if evidenced):
         ClusteringService clusteringService,
         SettingsService settingsService,
         GitService gitService,
+        RateBudgetService? rateBudgetService = null,
         IEnumerable<ISummarizationProvider>? providers = null)
     {
         _databaseService = databaseService;
         _clusteringService = clusteringService;
         _settingsService = settingsService;
         _gitService = gitService;
+        _rateBudgetService = rateBudgetService ?? new RateBudgetService();
         var resolved = (providers ?? Enumerable.Empty<ISummarizationProvider>()).ToList();
         if (resolved.Count == 0)
         {
@@ -945,6 +948,16 @@ Coverage (include only if evidenced):
         int maxCompletionTokens,
         CancellationToken cancellationToken)
     {
+        var estimatedInputTokens = EstimateTokens(masterPrompt) + EstimateTokens(prompt);
+        var reservedOutputTokens = Math.Max(1, maxCompletionTokens);
+
+        await _rateBudgetService.WaitForCapacityAsync(
+            provider.ProviderId,
+            _modelName,
+            estimatedInputTokens,
+            reservedOutputTokens,
+            cancellationToken);
+
         return await provider.CompleteAsync(
             new SummarizationProviderRequest(
                 ApiKey: apiKey,
@@ -954,6 +967,15 @@ Coverage (include only if evidenced):
                 Temperature: 0.2,
                 MaxCompletionTokens: maxCompletionTokens),
             cancellationToken);
+    }
+
+    private static int EstimateTokens(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return 1;
+
+        // Rough heuristic for scheduling only. Keep conservative.
+        return Math.Max(1, (int)Math.Ceiling(text.Length / 4.0));
     }
 
     private async Task<string?> GetApiKeyForProviderAsync(string providerId)

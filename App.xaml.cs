@@ -85,6 +85,7 @@ namespace DevChronicle
             services.AddSingleton<ClusteringService>();
             services.AddSingleton<ISummarizationProvider, OpenAiSummarizationProvider>();
             services.AddSingleton<ISummarizationProvider, AnthropicSummarizationProvider>();
+            services.AddSingleton<RateBudgetService>();
             services.AddSingleton<MiningService>();
             services.AddSingleton<SummarizationService>();
             services.AddSingleton<SummarizationRunnerService>();
