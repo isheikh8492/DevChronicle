@@ -87,9 +87,9 @@ public partial class SummarizationViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private void Stop()
+    private async Task StopAsync()
     {
-        _runner.Stop();
+        await _runner.StopAsync();
     }
 
     public async Task UpdatePendingCountAsync()

@@ -1611,4 +1611,24 @@ public class DatabaseService
             Error = error
         });
     }
+
+    public async Task<int> MarkPendingSummarizationBatchItemsFailedAsync(int batchId, string error)
+    {
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+        var sql = @"
+            UPDATE summarization_batch_items
+            SET status = @FailedStatus,
+                error = @Error
+            WHERE batch_id = @BatchId
+              AND status = @PendingStatus";
+
+        return await connection.ExecuteAsync(sql, new
+        {
+            BatchId = batchId,
+            FailedStatus = SummarizationBatchItemStatuses.Failed,
+            Error = error,
+            PendingStatus = SummarizationBatchItemStatuses.Pending
+        });
+    }
 }

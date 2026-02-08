@@ -281,11 +281,35 @@ public class SummarizationRunnerService
         }
     }
 
-    public void Stop()
+    public async Task StopAsync()
     {
         _cancellationTokenSource?.Cancel();
         Status = "Stopping summarization...";
         PublishState();
+
+        try
+        {
+            var session = _sessionContext.CurrentSession;
+            if (session != null)
+            {
+                var canceled = await _summarizationBatchService.CancelActiveBatchesForSessionAsync(
+                    session.Id,
+                    CancellationToken.None);
+
+                if (canceled > 0)
+                    CancelOperation($"Stopped and canceled {canceled} active batch job(s).");
+                else
+                    CancelOperation("Summarization canceled.");
+            }
+            else
+            {
+                CancelOperation("Summarization canceled.");
+            }
+        }
+        catch (Exception ex)
+        {
+            FailOperation($"Failed to cancel batch jobs: {ex.Message}", "Retry stop or wait for completion.");
+        }
     }
 
     public async Task ResumeActiveBatchesAsync(CancellationToken cancellationToken = default)

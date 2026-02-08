@@ -223,6 +223,56 @@ public class SummarizationBatchService
         return await _databaseService.GetActiveSummarizationBatchesAsync();
     }
 
+    public async Task<int> CancelActiveBatchesForSessionAsync(int sessionId, CancellationToken cancellationToken)
+    {
+        var batches = (await _databaseService.GetActiveSummarizationBatchesAsync())
+            .Where(b => b.SessionId == sessionId)
+            .ToList();
+
+        var canceled = 0;
+        foreach (var batch in batches)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (await CancelBatchAsync(batch.Id, cancellationToken))
+                canceled++;
+        }
+
+        return canceled;
+    }
+
+    public async Task<bool> CancelBatchAsync(int localBatchId, CancellationToken cancellationToken)
+    {
+        var batch = await _databaseService.GetSummarizationBatchByIdAsync(localBatchId);
+        if (batch == null)
+            return false;
+
+        if (SummarizationBatchStatuses.IsTerminal(batch.Status))
+            return false;
+
+        var apiKey = await _summarizationService.GetConfiguredApiKeyAsync();
+        if (string.IsNullOrWhiteSpace(apiKey))
+            throw new InvalidOperationException("Missing OPENAI_API_KEY. Set it in Settings or environment.");
+
+        if (!string.IsNullOrWhiteSpace(batch.OpenAiBatchId))
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"batches/{batch.OpenAiBatchId}/cancel");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+            request.Content = new StringContent("{}", Encoding.UTF8, "application/json");
+
+            using var response = await Http.SendAsync(request, cancellationToken);
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (!response.IsSuccessStatusCode)
+                throw new InvalidOperationException($"OpenAI API error: {response.StatusCode} - {body}");
+        }
+
+        batch.Status = SummarizationBatchStatuses.Canceled;
+        batch.UpdatedAt = DateTime.UtcNow;
+        batch.LastError = "Canceled by user.";
+        await _databaseService.UpdateSummarizationBatchAsync(batch);
+        await _databaseService.MarkPendingSummarizationBatchItemsFailedAsync(batch.Id, "Canceled by user.");
+        return true;
+    }
+
     private static string BuildCustomId(int sessionId, DateTime day) =>
         $"session:{sessionId}:day:{day:yyyy-MM-dd}";
 
