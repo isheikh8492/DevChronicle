@@ -17,6 +17,7 @@ public class SettingsService
     public const string SummarizationMaxCompletionTokensPerCallKey = "summarization.max_completion_tokens_per_call";
     public const string SummarizationMaxTotalBulletsPerDayKey = "summarization.max_total_bullets_per_day";
     public const string SummarizationNetworkRetryWindowMinutesKey = "summarization.network_retry_window_minutes";
+    public const string SummarizationRateLimitRetryWindowMinutesKey = "summarization.rate_limit_retry_window_minutes";
     public const string OpenAiApiKeyKey = "openai.api_key";
     public const string ExportDefaultDirectoryKey = "export.default_directory";
 

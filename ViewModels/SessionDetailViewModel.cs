@@ -12,10 +12,11 @@ namespace DevChronicle.ViewModels;
 /// Composite ViewModel that orchestrates all phase ViewModels for a session.
 /// This is the main ViewModel for SessionDetailPage.
 /// </summary>
-public partial class SessionDetailViewModel : ObservableObject
+public partial class SessionDetailViewModel : ObservableObject, IDisposable
 {
     private readonly DatabaseService _databaseService;
     private readonly SessionContextService _sessionContext;
+    private bool _disposed;
 
     [ObservableProperty]
     private Session? session;
@@ -98,6 +99,19 @@ public partial class SessionDetailViewModel : ObservableObject
         Summarization.DaySummarized += OnDaySummarized;
 
         DayBrowser.PropertyChanged += DayBrowserOnPropertyChanged;
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+
+        Mining.MiningCompleted -= OnMiningCompleted;
+        Summarization.DaySummarized -= OnDaySummarized;
+        DayBrowser.PropertyChanged -= DayBrowserOnPropertyChanged;
+        if (Summarization is IDisposable disposableSummarization)
+            disposableSummarization.Dispose();
+        _disposed = true;
     }
 
     /// <summary>

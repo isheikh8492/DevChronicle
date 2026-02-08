@@ -1,6 +1,3 @@
-using System.Collections.ObjectModel;
-using System.Diagnostics;
-using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DevChronicle.Models;
@@ -9,21 +6,12 @@ using DevChronicle.Services;
 namespace DevChronicle.ViewModels;
 
 /// <summary>
-/// ViewModel for Phase B: AI Summarization controls and progress.
+/// Transient UI projection over SummarizationRunnerService state.
 /// </summary>
-public partial class SummarizationViewModel : ObservableObject
+public partial class SummarizationViewModel : ObservableObject, IDisposable
 {
-    private const int InterDayDelayMilliseconds = 2000;
-    private const int RateLimitBaseDelayMilliseconds = 3000;
-    private const int MaxRateLimitRetries = 3;
-    private const int NetworkRetryBaseDelayMilliseconds = 5000;
-    private const int NetworkRetryMaxDelayMilliseconds = 30000;
-
-    private readonly SummarizationService _summarizationService;
-    private readonly DatabaseService _databaseService;
-    private readonly SessionContextService _sessionContext;
-    private readonly SettingsService _settingsService;
-    private CancellationTokenSource? _cancellationTokenSource;
+    private readonly SummarizationRunnerService _runner;
+    private bool _disposed;
 
     [ObservableProperty]
     private int daysSummarized;
@@ -58,211 +46,55 @@ public partial class SummarizationViewModel : ObservableObject
     public bool ShowStatusPanel => IsSummarizing || OperationState != OperationState.Idle;
     public string ProgressCounterText => ProgressTotalSteps > 0 ? $"{ProgressCurrentStep}/{ProgressTotalSteps}" : string.Empty;
 
-    /// <summary>
-    /// Event fired when a day is summarized.
-    /// Allows coordinators to update day browser status badges.
-    /// </summary>
     public event EventHandler<DateTime>? DaySummarized;
 
-    public SummarizationViewModel(
-        SummarizationService summarizationService,
-        DatabaseService databaseService,
-        SettingsService settingsService,
-        SessionContextService sessionContext)
+    public SummarizationViewModel(SummarizationRunnerService runner)
     {
-        _summarizationService = summarizationService;
-        _databaseService = databaseService;
-        _settingsService = settingsService;
-        _sessionContext = sessionContext;
+        _runner = runner;
+        _runner.StateChanged += OnRunnerStateChanged;
+        _runner.DaySummarized += OnRunnerDaySummarized;
+        SyncFromRunner();
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+
+        _runner.StateChanged -= OnRunnerStateChanged;
+        _runner.DaySummarized -= OnRunnerDaySummarized;
+        _disposed = true;
     }
 
     [RelayCommand]
     private async Task SummarizePendingDaysAsync()
     {
-        if (IsSummarizing) return;
-
-        var session = _sessionContext.CurrentSession;
-        if (session == null)
-        {
-            RequireInput("No session selected.", "Open a session and retry.");
-            return;
-        }
-
-        IsSummarizing = true;
-        BeginOperation("Summarizing pending days");
-        _cancellationTokenSource = new CancellationTokenSource();
-
-        try
-        {
-            // Get all days with status "mined" (pending summarization)
-            var allDays = (await _databaseService.GetDaysAsync(session.Id)).ToList();
-            var pendingDaysList = allDays.Where(d => d.Status == DayStatus.Mined).ToList();
-
-            if (pendingDaysList.Count == 0)
-            {
-                RequireInput("No pending days to summarize.", "Mine or select a session with pending days.");
-                return;
-            }
-
-            PendingDays = pendingDaysList.Count;
-            var totalPending = pendingDaysList.Count;
-            var currentIndex = 0;
-
-            foreach (var day in pendingDaysList)
-            {
-                if (_cancellationTokenSource.Token.IsCancellationRequested)
-                    break;
-
-                currentIndex++;
-                UpdateOperation("Summarizing pending days", currentIndex, totalPending);
-
-                var maxBullets = await _settingsService.GetAsync(SettingsService.MaxBulletsPerDayKey, 6);
-                var result = await SummarizeDayWithRetryAsync(
-                    session.Id,
-                    day.Date,
-                    maxBullets,
-                    _cancellationTokenSource.Token);
-
-                if (result.Success)
-                {
-                    // Update day status in database
-                    day.Status = DayStatus.Summarized;
-                    await _databaseService.UpsertDayAsync(day);
-
-                    DaysSummarized++;
-                    PendingDays--;
-                    UpdateOperation("Summarizing pending days", currentIndex, totalPending);
-
-                    // Notify listeners that this day was summarized
-                    DaySummarized?.Invoke(this, day.Date);
-
-                    if (currentIndex < totalPending && !_cancellationTokenSource.Token.IsCancellationRequested)
-                    {
-                        Status = $"Cooling down before next day ({InterDayDelayMilliseconds / 1000}s)...";
-                        await Task.Delay(InterDayDelayMilliseconds, _cancellationTokenSource.Token);
-                    }
-                }
-                else
-                {
-                    FailOperation($"Summarization failed: {result.ErrorMessage}", "Fix the summarization issue and retry.");
-                    return;
-                }
-            }
-
-            if (_cancellationTokenSource.Token.IsCancellationRequested)
-            {
-                CancelOperation("Summarization canceled.");
-            }
-            else
-            {
-                CompleteOperation("Summarization complete.");
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            CancelOperation("Summarization canceled.");
-        }
-        catch (Exception ex)
-        {
-            FailOperation($"Summarization failed: {ex.Message}", "Retry summarization.");
-        }
-        finally
-        {
-            IsSummarizing = false;
-            _cancellationTokenSource?.Dispose();
-            _cancellationTokenSource = null;
-            await UpdatePendingCountAsync();
-        }
+        await _runner.SummarizePendingDaysAsync();
     }
 
     [RelayCommand]
     private async Task SummarizeSelectedDayAsync(DayViewModel? day)
     {
-        if (IsSummarizing) return;
-
-        var session = _sessionContext.CurrentSession;
-        if (session == null)
-        {
-            RequireInput("No session selected.", "Open a session and retry.");
-            return;
-        }
-
         if (day == null)
         {
-            RequireInput("No day selected.", "Select a day and retry.");
+            OperationState = OperationState.NeedsInput;
+            RecoverActionText = "Select a day and retry.";
+            Status = OperationStatusFormatter.FormatTerminal(OperationState.NeedsInput, "No day selected.");
             return;
         }
 
-        IsSummarizing = true;
-        BeginOperation("Summarizing selected day");
-        UpdateOperation("Summarizing selected day", 1, 1);
-        _cancellationTokenSource = new CancellationTokenSource();
-
-        try
-        {
-            var maxBullets = await _settingsService.GetAsync(SettingsService.MaxBulletsPerDayKey, 6);
-            var result = await SummarizeDayWithRetryAsync(
-                session.Id,
-                day.Date,
-                maxBullets,
-                _cancellationTokenSource.Token);
-
-            if (result.Success)
-            {
-                day.SetStatus(DayStatus.Summarized);
-                await _databaseService.UpsertDayAsync(day.Day);
-
-                DaysSummarized++;
-                DaySummarized?.Invoke(this, day.Date);
-                CompleteOperation($"Summarization complete for {day.Date:yyyy-MM-dd}.");
-            }
-            else
-            {
-                FailOperation($"Summarization failed: {result.ErrorMessage}", "Fix the issue and retry selected day.");
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            CancelOperation("Summarization canceled.");
-        }
-        catch (Exception ex)
-        {
-            FailOperation($"Summarization failed: {ex.Message}", "Retry selected day summarization.");
-        }
-        finally
-        {
-            IsSummarizing = false;
-            _cancellationTokenSource?.Dispose();
-            _cancellationTokenSource = null;
-            await UpdatePendingCountAsync();
-        }
+        await _runner.SummarizeSelectedDayAsync(day.Date);
     }
 
     [RelayCommand]
     private void Stop()
     {
-        _cancellationTokenSource?.Cancel();
-        Status = "Stopping summarization...";
+        _runner.Stop();
     }
 
-    /// <summary>
-    /// Updates the count of pending days (called when days are loaded or mined).
-    /// </summary>
     public async Task UpdatePendingCountAsync()
     {
-        var session = _sessionContext.CurrentSession;
-        if (session == null) return;
-
-        try
-        {
-            var allDays = (await _databaseService.GetDaysAsync(session.Id)).ToList();
-            PendingDays = allDays.Count(d => d.Status == DayStatus.Mined);
-            DaysSummarized = allDays.Count(d => d.Status == DayStatus.Summarized || d.Status == DayStatus.Approved);
-        }
-        catch
-        {
-            // Ignore errors during count update
-        }
+        await _runner.UpdatePendingCountAsync();
     }
 
     partial void OnProgressChanged(double value)
@@ -298,150 +130,26 @@ public partial class SummarizationViewModel : ObservableObject
         OnPropertyChanged(nameof(ShowStatusPanel));
     }
 
-    private void BeginOperation(string verb)
+    private void OnRunnerStateChanged(object? sender, EventArgs e)
     {
-        OperationState = OperationState.Running;
-        RecoverActionText = string.Empty;
-        ProgressCurrentStep = 0;
-        ProgressTotalSteps = 0;
-        Progress = 0;
-        Status = OperationStatusFormatter.FormatProgress(verb, 0, 0);
+        SyncFromRunner();
     }
 
-    private void UpdateOperation(string verb, int current, int total)
+    private void OnRunnerDaySummarized(object? sender, DateTime day)
     {
-        var clampedCurrent = Math.Max(0, current);
-        var clampedTotal = Math.Max(0, total);
-        if (clampedTotal > 0 && clampedCurrent > clampedTotal)
-        {
-            Debug.WriteLine($"[SummarizationProgress] Invalid progress pair emitted: {clampedCurrent}/{clampedTotal}. Clamping.");
-            clampedCurrent = clampedTotal;
-        }
-
-        ProgressCurrentStep = clampedCurrent;
-        ProgressTotalSteps = clampedTotal;
-        Progress = clampedTotal > 0
-            ? Math.Clamp((double)clampedCurrent / clampedTotal * 100, 0, 100)
-            : 0;
-        Status = OperationStatusFormatter.FormatProgress(verb, clampedCurrent, clampedTotal);
+        DaySummarized?.Invoke(this, day);
     }
 
-    private void CompleteOperation(string successMessage)
+    private void SyncFromRunner()
     {
-        OperationState = OperationState.Success;
-        RecoverActionText = string.Empty;
-        Status = OperationStatusFormatter.FormatTerminal(OperationState.Success, successMessage);
-    }
-
-    private void CancelOperation(string cancelMessage)
-    {
-        OperationState = OperationState.Canceled;
-        RecoverActionText = string.Empty;
-        Status = OperationStatusFormatter.FormatTerminal(OperationState.Canceled, cancelMessage);
-    }
-
-    private void FailOperation(string errorMessage, string recoverAction)
-    {
-        OperationState = OperationState.Error;
-        RecoverActionText = recoverAction;
-        Status = OperationStatusFormatter.FormatTerminal(OperationState.Error, errorMessage);
-    }
-
-    private void RequireInput(string message, string recoverAction)
-    {
-        OperationState = OperationState.NeedsInput;
-        RecoverActionText = recoverAction;
-        Status = OperationStatusFormatter.FormatTerminal(OperationState.NeedsInput, message);
-    }
-
-    private async Task<SummarizationResult> SummarizeDayWithRetryAsync(
-        int sessionId,
-        DateTime day,
-        int maxBullets,
-        CancellationToken cancellationToken)
-    {
-        var configuredRetryWindowMinutes = await _settingsService.GetAsync(
-            SettingsService.SummarizationNetworkRetryWindowMinutesKey,
-            5);
-        var networkRetryWindowMinutes = Math.Clamp(configuredRetryWindowMinutes, 1, 60);
-
-        var rateLimitAttempt = 0;
-        var networkAttempt = 0;
-        var networkRetryDeadline = DateTime.UtcNow.AddMinutes(networkRetryWindowMinutes);
-
-        while (true)
-        {
-            var result = await _summarizationService.SummarizeDayAsync(
-                sessionId,
-                day,
-                maxBullets: maxBullets,
-                cancellationToken: cancellationToken);
-
-            if (result.Success)
-                return result;
-
-            if (IsRetryableNetworkError(result.ErrorMessage))
-            {
-                var now = DateTime.UtcNow;
-                if (now >= networkRetryDeadline)
-                    return result;
-
-                var networkDelay = Math.Min(
-                    NetworkRetryBaseDelayMilliseconds * (int)Math.Pow(2, Math.Min(networkAttempt, 4)),
-                    NetworkRetryMaxDelayMilliseconds);
-                var remaining = networkRetryDeadline - now;
-                if (remaining.TotalMilliseconds < networkDelay)
-                    networkDelay = Math.Max(1000, (int)remaining.TotalMilliseconds);
-
-                var remainingMinutes = Math.Max(1, (int)Math.Ceiling(remaining.TotalMinutes));
-                Status = $"Network issue detected. Retrying in {Math.Max(1, networkDelay / 1000)}s (up to {remainingMinutes} more min)...";
-                networkAttempt++;
-                await Task.Delay(networkDelay, cancellationToken);
-                continue;
-            }
-
-            if (!IsRetryableApiError(result.ErrorMessage) || rateLimitAttempt >= MaxRateLimitRetries)
-                return result;
-
-            var delay = Math.Min(
-                RateLimitBaseDelayMilliseconds * (int)Math.Pow(2, rateLimitAttempt),
-                30000);
-
-            Status = $"Rate-limited by OpenAI. Retrying in {Math.Max(1, delay / 1000)}s...";
-            rateLimitAttempt++;
-            await Task.Delay(delay, cancellationToken);
-        }
-    }
-
-    private static bool IsRetryableApiError(string? errorMessage)
-    {
-        if (string.IsNullOrWhiteSpace(errorMessage))
-            return false;
-
-        var text = errorMessage.ToLowerInvariant();
-        return text.Contains("429") ||
-               text.Contains("rate limit") ||
-               text.Contains("rate_limit") ||
-               text.Contains("too many requests") ||
-               text.Contains("temporarily unavailable") ||
-               text.Contains("timeout");
-    }
-
-    private static bool IsRetryableNetworkError(string? errorMessage)
-    {
-        if (string.IsNullOrWhiteSpace(errorMessage))
-            return false;
-
-        var text = errorMessage.ToLowerInvariant();
-        return text.Contains("no such host is known") ||
-               text.Contains("name or service not known") ||
-               text.Contains("temporary failure in name resolution") ||
-               text.Contains("connection reset") ||
-               text.Contains("connection refused") ||
-               text.Contains("actively refused") ||
-               text.Contains("network is unreachable") ||
-               text.Contains("an error occurred while sending the request") ||
-               text.Contains("httpclient") ||
-               text.Contains("unable to read data from the transport connection");
+        DaysSummarized = _runner.DaysSummarized;
+        PendingDays = _runner.PendingDays;
+        Status = _runner.Status;
+        OperationState = _runner.OperationState;
+        RecoverActionText = _runner.RecoverActionText;
+        IsSummarizing = _runner.IsSummarizing;
+        Progress = _runner.Progress;
+        ProgressCurrentStep = _runner.ProgressCurrentStep;
+        ProgressTotalSteps = _runner.ProgressTotalSteps;
     }
 }

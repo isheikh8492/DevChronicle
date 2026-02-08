@@ -58,6 +58,9 @@ public partial class SettingsViewModel : ObservableObject
     private int summarizationNetworkRetryWindowMinutes;
 
     [ObservableProperty]
+    private int summarizationRateLimitRetryWindowMinutes;
+
+    [ObservableProperty]
     private string defaultExportDirectory = string.Empty;
 
     private string _actualApiKey = string.Empty;
@@ -89,6 +92,7 @@ public partial class SettingsViewModel : ObservableObject
         SummarizationMaxCompletionTokensPerCall = await _settingsService.GetAsync(SettingsService.SummarizationMaxCompletionTokensPerCallKey, 3000);
         SummarizationMaxTotalBulletsPerDay = await _settingsService.GetAsync(SettingsService.SummarizationMaxTotalBulletsPerDayKey, 40);
         SummarizationNetworkRetryWindowMinutes = await _settingsService.GetAsync(SettingsService.SummarizationNetworkRetryWindowMinutesKey, 5);
+        SummarizationRateLimitRetryWindowMinutes = await _settingsService.GetAsync(SettingsService.SummarizationRateLimitRetryWindowMinutesKey, 10);
         var fallbackExportDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "DevChronicleExports");
         DefaultExportDirectory = await _settingsService.GetAsync(SettingsService.ExportDefaultDirectoryKey, fallbackExportDir);
         UpdateDisplayedApiKey();
@@ -138,6 +142,7 @@ public partial class SettingsViewModel : ObservableObject
     partial void OnSummarizationMaxCompletionTokensPerCallChanged(int value) => _ = _settingsService.SetAsync(SettingsService.SummarizationMaxCompletionTokensPerCallKey, value);
     partial void OnSummarizationMaxTotalBulletsPerDayChanged(int value) => _ = _settingsService.SetAsync(SettingsService.SummarizationMaxTotalBulletsPerDayKey, value);
     partial void OnSummarizationNetworkRetryWindowMinutesChanged(int value) => _ = _settingsService.SetAsync(SettingsService.SummarizationNetworkRetryWindowMinutesKey, Math.Clamp(value, 1, 60));
+    partial void OnSummarizationRateLimitRetryWindowMinutesChanged(int value) => _ = _settingsService.SetAsync(SettingsService.SummarizationRateLimitRetryWindowMinutesKey, Math.Clamp(value, 1, 60));
     partial void OnSelectedSummarizationModelChanged(string value) =>
         _ = _settingsService.SetAsync(
             SettingsService.SummarizationModelKey,

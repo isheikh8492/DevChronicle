@@ -85,6 +85,7 @@ namespace DevChronicle
             services.AddSingleton<ClusteringService>();
             services.AddSingleton<MiningService>();
             services.AddSingleton<SummarizationService>();
+            services.AddSingleton<SummarizationRunnerService>();
             services.AddSingleton<ExportService>();
             services.AddSingleton<SettingsService>();
             services.AddSingleton<SessionContextService>();

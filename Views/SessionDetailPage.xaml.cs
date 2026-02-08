@@ -13,6 +13,7 @@ public partial class SessionDetailPage : Page
     public SessionDetailPage()
     {
         InitializeComponent();
+        Unloaded += SessionDetailPage_Unloaded;
 
         try
         {
@@ -75,6 +76,12 @@ public partial class SessionDetailPage : Page
         {
             mainWindow.NavigateBack();
         }
+    }
+
+    private void SessionDetailPage_Unloaded(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (DataContext is IDisposable disposable)
+            disposable.Dispose();
     }
 
     private void EditSummaryButton_Click(object sender, System.Windows.RoutedEventArgs e)
