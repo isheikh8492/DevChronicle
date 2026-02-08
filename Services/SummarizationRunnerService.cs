@@ -189,9 +189,11 @@ public class SummarizationRunnerService
             Status = "Submitting batch to OpenAI...";
             PublishState();
 
-            var batch = await _summarizationBatchService.SubmitPendingDaysBatchAsync(
-                session.Id,
-                maxBullets,
+            var batch = await Task.Run(
+                async () => await _summarizationBatchService.SubmitPendingDaysBatchAsync(
+                    session.Id,
+                    maxBullets,
+                    _cancellationTokenSource.Token),
                 _cancellationTokenSource.Token);
 
             Status = $"Batch submitted ({batch.OpenAiBatchId}).";
@@ -432,7 +434,9 @@ public class SummarizationRunnerService
                     {
                         Status = "Applying batch results...";
                         PublishState();
-                        var applyResult = await _summarizationBatchService.ApplyBatchResultsAsync(localBatchId, cancellationToken);
+                        var applyResult = await Task.Run(
+                            async () => await _summarizationBatchService.ApplyBatchResultsAsync(localBatchId, cancellationToken),
+                            cancellationToken);
                         Status = applyResult.Failed > 0
                             ? $"Partial Failure: {applyResult.Succeeded} succeeded, {applyResult.Failed} failed."
                             : $"Completed: {applyResult.Succeeded} days summarized.";
