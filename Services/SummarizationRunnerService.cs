@@ -8,7 +8,6 @@ public class SummarizationRunnerService
 {
     private const int InterDayDelayMilliseconds = 2000;
     private const int RateLimitBaseDelayMilliseconds = 3000;
-    private const int RateLimitMaxDelayMilliseconds = 60000;
     private const int NetworkRetryBaseDelayMilliseconds = 5000;
     private const int NetworkRetryMaxDelayMilliseconds = 30000;
 
@@ -284,9 +283,7 @@ public class SummarizationRunnerService
             if (rateNow >= rateLimitRetryDeadline)
                 return result;
 
-            var rateLimitDelay = Math.Min(
-                RateLimitBaseDelayMilliseconds * (int)Math.Pow(2, Math.Min(rateLimitAttempt, 6)),
-                RateLimitMaxDelayMilliseconds);
+            var rateLimitDelay = RateLimitBaseDelayMilliseconds * (int)Math.Pow(2, Math.Min(rateLimitAttempt, 20));
             var rateRemaining = rateLimitRetryDeadline - rateNow;
             if (rateRemaining.TotalMilliseconds < rateLimitDelay)
                 rateLimitDelay = Math.Max(1000, (int)rateRemaining.TotalMilliseconds);
