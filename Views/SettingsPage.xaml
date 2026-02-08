@@ -146,6 +146,24 @@
                         </Border>
                     </Grid>
 
+                    <Border Margin="0,0,0,12"
+                            Padding="10"
+                            CornerRadius="6"
+                            BorderThickness="1"
+                            BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                            Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
+                        <StackPanel>
+                            <TextBlock Text="Batch max days per submit"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       Margin="0,0,0,6"/>
+                            <ui:NumberBox Value="{Binding SummarizationBatchMaxDaysPerSubmit, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          Minimum="1"
+                                          Maximum="60"
+                                          SpinButtonPlacementMode="Inline"/>
+                        </StackPanel>
+                    </Border>
+
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>

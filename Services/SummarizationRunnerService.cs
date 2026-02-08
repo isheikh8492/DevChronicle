@@ -184,21 +184,45 @@ public class SummarizationRunnerService
             PendingDays = pendingDaysList.Count;
             PublishState();
             var maxBullets = await _settingsService.GetAsync(SettingsService.MaxBulletsPerDayKey, 6);
+            var batchMaxDaysPerSubmit = await _settingsService.GetAsync(
+                SettingsService.SummarizationBatchMaxDaysPerSubmitKey,
+                15);
+            batchMaxDaysPerSubmit = Math.Clamp(batchMaxDaysPerSubmit, 1, 60);
+            var totalPendingAtStart = pendingDaysList.Count;
+            var batchIndex = 0;
 
-            UpdateOperation("Submitting pending days batch", 0, pendingDaysList.Count);
-            Status = "Submitting batch to OpenAI...";
-            PublishState();
+            while (!_cancellationTokenSource.Token.IsCancellationRequested)
+            {
+                var currentPending = (await _databaseService.GetDaysAsync(session.Id))
+                    .Count(d => d.Status == DayStatus.Mined);
+                PendingDays = currentPending;
+                PublishState();
+                if (currentPending == 0)
+                {
+                    CompleteOperation("Summarization complete.");
+                    return;
+                }
 
-            var batch = await Task.Run(
-                async () => await _summarizationBatchService.SubmitPendingDaysBatchAsync(
-                    session.Id,
-                    maxBullets,
-                    _cancellationTokenSource.Token),
-                _cancellationTokenSource.Token);
+                batchIndex++;
+                var done = Math.Max(0, totalPendingAtStart - currentPending);
+                UpdateOperation("Submitting pending days batch", done, totalPendingAtStart);
+                Status = $"Submitting batch {batchIndex} (up to {batchMaxDaysPerSubmit} days)...";
+                PublishState();
 
-            Status = $"Batch submitted ({batch.OpenAiBatchId}).";
-            PublishState();
-            await MonitorBatchUntilTerminalAsync(batch.Id, _cancellationTokenSource.Token);
+                var batch = await Task.Run(
+                    async () => await _summarizationBatchService.SubmitPendingDaysBatchAsync(
+                        session.Id,
+                        maxBullets,
+                        batchMaxDaysPerSubmit,
+                        _cancellationTokenSource.Token),
+                    _cancellationTokenSource.Token);
+
+                Status = $"Batch submitted ({batch.OpenAiBatchId}).";
+                PublishState();
+                await MonitorBatchUntilTerminalAsync(batch.Id, _cancellationTokenSource.Token);
+            }
+
+            CancelOperation("Summarization canceled.");
         }
         catch (OperationCanceledException)
         {

@@ -25,6 +25,7 @@ public class SummarizationBatchService
     public async Task<SummarizationBatch> SubmitPendingDaysBatchAsync(
         int sessionId,
         int maxBullets,
+        int maxDaysPerSubmit,
         CancellationToken cancellationToken)
     {
         var apiKey = await _summarizationService.GetConfiguredApiKeyAsync();
@@ -34,6 +35,7 @@ public class SummarizationBatchService
         var days = (await _databaseService.GetDaysAsync(sessionId))
             .Where(d => d.Status == DayStatus.Mined)
             .OrderBy(d => d.Date)
+            .Take(Math.Clamp(maxDaysPerSubmit, 1, 60))
             .ToList();
 
         if (days.Count == 0)
