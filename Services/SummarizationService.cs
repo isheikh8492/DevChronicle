@@ -17,6 +17,7 @@ public class SummarizationService
     private readonly GitService _gitService;
     private readonly IReadOnlyList<ISummarizationProvider> _providers;
     private readonly RateBudgetService _rateBudgetService;
+    private readonly LoggerService? _logger;
     private string _modelName = "gpt-4o-mini";
     private const string PromptVersion = "v2";
     private const int DefaultMaxCompletionTokensPerCall = 3000;
@@ -66,6 +67,7 @@ Coverage (include only if evidenced):
         SettingsService settingsService,
         GitService gitService,
         RateBudgetService? rateBudgetService = null,
+        LoggerService? logger = null,
         IEnumerable<ISummarizationProvider>? providers = null)
     {
         _databaseService = databaseService;
@@ -73,6 +75,7 @@ Coverage (include only if evidenced):
         _settingsService = settingsService;
         _gitService = gitService;
         _rateBudgetService = rateBudgetService ?? new RateBudgetService();
+        _logger = logger;
         var resolved = (providers ?? Enumerable.Empty<ISummarizationProvider>()).ToList();
         if (resolved.Count == 0)
         {
@@ -572,7 +575,13 @@ Coverage (include only if evidenced):
         return text.Contains("request too large", StringComparison.Ordinal) ||
                text.Contains("context_length_exceeded", StringComparison.Ordinal) ||
                text.Contains("maximum context length", StringComparison.Ordinal) ||
-               text.Contains("tokens per minute", StringComparison.Ordinal);
+               text.Contains("tokens per minute", StringComparison.Ordinal) ||
+               text.Contains("too many tokens", StringComparison.Ordinal) ||
+               text.Contains("prompt is too long", StringComparison.Ordinal) ||
+               text.Contains("input is too long", StringComparison.Ordinal) ||
+               text.Contains("exceeds context", StringComparison.Ordinal) ||
+               text.Contains("400", StringComparison.Ordinal) && text.Contains("token", StringComparison.Ordinal) ||
+               text.Contains("bad request", StringComparison.Ordinal) && text.Contains("token", StringComparison.Ordinal);
     }
 
     private async Task<string> SummarizeWithChunkingAsync(
@@ -1057,15 +1066,30 @@ Coverage (include only if evidenced):
             cancellationToken);
 
         ReportStatus($"Calling `{provider.ProviderId}` model `{_modelName}`...");
-        return await provider.CompleteAsync(
-            new SummarizationProviderRequest(
-                ApiKey: apiKey,
-                Model: _modelName,
-                SystemPrompt: masterPrompt,
-                UserPrompt: prompt,
-                Temperature: 0.2,
-                MaxCompletionTokens: maxCompletionTokens),
-            cancellationToken);
+        try
+        {
+            var response = await provider.CompleteAsync(
+                new SummarizationProviderRequest(
+                    ApiKey: apiKey,
+                    Model: _modelName,
+                    SystemPrompt: masterPrompt,
+                    UserPrompt: prompt,
+                    Temperature: 0.2,
+                    MaxCompletionTokens: maxCompletionTokens),
+                cancellationToken);
+
+            _logger?.LogInfo(
+                $"[LLM OUTPUT] provider={provider.ProviderId} model={_modelName} estimated_input_tokens={estimatedInputTokens} reserved_output_tokens={reservedOutputTokens} reached_max_tokens={response.ReachedMaxTokens}\n{response.Content}");
+
+            return response;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(
+                $"[LLM ERROR] provider={provider.ProviderId} model={_modelName} estimated_input_tokens={estimatedInputTokens} reserved_output_tokens={reservedOutputTokens}",
+                ex);
+            throw;
+        }
     }
 
     private static int EstimateTokens(string? text)
