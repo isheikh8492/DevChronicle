@@ -186,17 +186,13 @@ public partial class SessionDetailViewModel : ObservableObject, IDisposable
         await Summarization.UpdatePendingCountAsync();
     }
 
-    private void OnDaySummarized(object? sender, DateTime day)
+    private async void OnDaySummarized(object? sender, DateTime day)
     {
-        // Update day status badge in day browser
-        DayBrowser.UpdateDayStatus(day, Models.DayStatus.Summarized);
-
-        var selected = DayBrowser.SelectedDay;
-        if (selected != null && selected.Date.Date == day.Date)
-        {
-            _ = LoadSelectedDaySummaryAsync();
-            _ = LoadSelectedDayEvidenceAsync();
-        }
+        // Force a DB-backed refresh so badges and selected day content update
+        // immediately without requiring user navigation clicks.
+        await DayBrowser.RefreshPreservingSelectionAsync();
+        await LoadSelectedDaySummaryAsync();
+        await LoadSelectedDayEvidenceAsync();
     }
 
     private void DayBrowserOnPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)

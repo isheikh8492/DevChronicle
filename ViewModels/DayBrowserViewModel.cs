@@ -71,6 +71,20 @@ public partial class DayBrowserViewModel : ObservableObject
     /// </summary>
     public async Task LoadDaysAsync(int sessionId)
     {
+        await LoadDaysCoreAsync(sessionId, null);
+    }
+
+    public async Task RefreshPreservingSelectionAsync()
+    {
+        var session = _sessionContext.CurrentSession;
+        if (session == null) return;
+
+        var selectedDate = SelectedDay?.Date.Date;
+        await LoadDaysCoreAsync(session.Id, selectedDate);
+    }
+
+    private async Task LoadDaysCoreAsync(int sessionId, DateTime? preferredSelectedDate)
+    {
         IsLoading = true;
 
         try
@@ -87,12 +101,28 @@ public partial class DayBrowserViewModel : ObservableObject
                     Days.Add(new DayViewModel(day));
                 }
 
-                // Auto-select the first (most recent) day
-                if (Days.Count > 0)
+                if (Days.Count == 0)
                 {
-                    var firstDay = Days[0];
-                    firstDay.IsExpanded = true;
-                    SelectedDay = firstDay;
+                    SelectedDay = null;
+                    return;
+                }
+
+                DayViewModel? selected = null;
+                if (preferredSelectedDate.HasValue)
+                {
+                    selected = Days.FirstOrDefault(d => d.Date.Date == preferredSelectedDate.Value.Date);
+                }
+
+                if (selected == null)
+                {
+                    // Auto-select the first (most recent) day
+                    selected = Days[0];
+                }
+
+                if (selected != null)
+                {
+                    selected.IsExpanded = true;
+                    SelectedDay = selected;
                 }
             });
         }
@@ -121,7 +151,7 @@ public partial class DayBrowserViewModel : ObservableObject
         var session = _sessionContext.CurrentSession;
         if (session == null) return;
 
-        await LoadDaysAsync(session.Id);
+        await LoadDaysCoreAsync(session.Id, null);
     }
 
     /// <summary>
