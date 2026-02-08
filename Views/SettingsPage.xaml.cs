@@ -55,6 +55,19 @@ namespace DevChronicle.Views
             System.Windows.MessageBox.Show("Master prompt saved.", "Settings", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
+        private async void SaveAnthropicApiKey_Click(object sender, RoutedEventArgs e)
+        {
+            var apiKey = AnthropicApiKeyBox?.Text?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(apiKey))
+            {
+                System.Windows.MessageBox.Show("Please enter a valid Anthropic API key.", "Settings", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            await ViewModel.SaveAnthropicApiKeyAsync(apiKey);
+            System.Windows.MessageBox.Show("Anthropic API key saved.", "Settings", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
         private void BrowseExportDirectory_Click(object sender, RoutedEventArgs e)
         {
             using var dialog = new WinForms.FolderBrowserDialog

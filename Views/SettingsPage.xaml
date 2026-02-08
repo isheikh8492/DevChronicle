@@ -60,6 +60,23 @@
                     <TextBlock
                         FontSize="12"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Text="Anthropic API key (for Claude models)"
+                        Margin="0,16,0,8"/>
+                    <ui:TextBox
+                        x:Name="AnthropicApiKeyBox"
+                        PlaceholderText="Enter your Anthropic API key"
+                        Text="{Binding AnthropicApiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        Margin="0,0,0,8"/>
+                    <ui:Button
+                        Content="Save Anthropic API Key"
+                        Icon="{ui:SymbolIcon Save24}"
+                        Appearance="Secondary"
+                        Click="SaveAnthropicApiKey_Click"
+                        HorizontalAlignment="Left"/>
+
+                    <TextBlock
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="Summarization model"
                         Margin="0,16,0,8"/>
                     <ComboBox

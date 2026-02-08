@@ -43,6 +43,9 @@ public partial class SettingsViewModel : ObservableObject
     private bool isEditingApiKey;
 
     [ObservableProperty]
+    private string anthropicApiKey = string.Empty;
+
+    [ObservableProperty]
     private string masterPromptText = string.Empty;
 
     [ObservableProperty]
@@ -68,7 +71,9 @@ public partial class SettingsViewModel : ObservableObject
     {
         "gpt-4o-mini",
         "gpt-4.1",
-        "gpt-5"
+        "gpt-5",
+        "claude-3-7-sonnet-latest",
+        "claude-sonnet-4-0"
     };
 
     public SettingsViewModel(SettingsService settingsService)
@@ -87,6 +92,7 @@ public partial class SettingsViewModel : ObservableObject
         FillGapsFirst = await _settingsService.GetAsync(SettingsService.MiningFillGapsFirstKey, false);
         BackfillOrder = await _settingsService.GetAsync(SettingsService.MiningBackfillOrderKey, "OldestFirst");
         _actualApiKey = await _settingsService.GetAsync(SettingsService.OpenAiApiKeyKey, string.Empty);
+        AnthropicApiKey = await _settingsService.GetAsync(SettingsService.AnthropicApiKeyKey, string.Empty);
         MasterPromptText = await _settingsService.GetAsync(SettingsService.SummarizationMasterPromptKey, string.Empty);
         SelectedSummarizationModel = await _settingsService.GetAsync(SettingsService.SummarizationModelKey, "gpt-4o-mini");
         SummarizationMaxCompletionTokensPerCall = await _settingsService.GetAsync(SettingsService.SummarizationMaxCompletionTokensPerCallKey, 3000);
@@ -154,6 +160,12 @@ public partial class SettingsViewModel : ObservableObject
         await _settingsService.SetAsync(SettingsService.OpenAiApiKeyKey, newApiKey);
         IsEditingApiKey = false;
         UpdateDisplayedApiKey();
+    }
+
+    public async Task SaveAnthropicApiKeyAsync(string newApiKey)
+    {
+        AnthropicApiKey = newApiKey;
+        await _settingsService.SetAsync(SettingsService.AnthropicApiKeyKey, newApiKey);
     }
 
     public async Task SaveMasterPromptAsync()

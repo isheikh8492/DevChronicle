@@ -1,5 +1,3 @@
-using System.Net.Http;
-using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -17,6 +15,7 @@ public class SummarizationService
     private readonly ClusteringService _clusteringService;
     private readonly SettingsService _settingsService;
     private readonly GitService _gitService;
+    private readonly IReadOnlyList<ISummarizationProvider> _providers;
     private string _modelName = "gpt-4o-mini";
     private const string PromptVersion = "v2";
     private const int DefaultMaxCompletionTokensPerCall = 3000;
@@ -55,22 +54,27 @@ Coverage (include only if evidenced):
 - experiments/abandoned directions
 - unresolved items and next steps
 """;
-    private static readonly HttpClient Http = new HttpClient
-    {
-        BaseAddress = new Uri("https://api.openai.com/v1/")
-    };
     private string? _apiKey;
 
     public SummarizationService(
         DatabaseService databaseService,
         ClusteringService clusteringService,
         SettingsService settingsService,
-        GitService gitService)
+        GitService gitService,
+        IEnumerable<ISummarizationProvider>? providers = null)
     {
         _databaseService = databaseService;
         _clusteringService = clusteringService;
         _settingsService = settingsService;
         _gitService = gitService;
+        var resolved = (providers ?? Enumerable.Empty<ISummarizationProvider>()).ToList();
+        if (resolved.Count == 0)
+        {
+            resolved.Add(new OpenAiSummarizationProvider());
+            resolved.Add(new AnthropicSummarizationProvider());
+        }
+
+        _providers = resolved;
     }
 
     public void ConfigureOpenAI(string apiKey, string? modelName = null)
@@ -125,17 +129,19 @@ Coverage (include only if evidenced):
                 }
             }
 
-            // Call OpenAI or generate offline summary
+            // Call provider or generate offline summary
             string bulletsText;
-            var apiKey = await GetApiKeyAsync();
-            if (string.IsNullOrWhiteSpace(apiKey))
-            {
-                result.ErrorMessage = "Missing OPENAI_API_KEY. Set it in your environment to enable AI summarization.";
-                return result;
-            }
-
             var masterPrompt = await GetMasterPromptAsync();
             _modelName = await GetModelNameAsync();
+            var provider = ResolveProviderForModel(_modelName);
+            var apiKey = await GetApiKeyForProviderAsync(provider.ProviderId);
+            if (string.IsNullOrWhiteSpace(apiKey))
+            {
+                result.ErrorMessage = string.Equals(provider.ProviderId, "anthropic", StringComparison.OrdinalIgnoreCase)
+                    ? "Missing Anthropic API key. Set it in Settings or ANTHROPIC_API_KEY."
+                    : "Missing OPENAI_API_KEY. Set it in Settings or environment to enable AI summarization.";
+                return result;
+            }
             var maxCompletionTokensPerCall = await _settingsService.GetAsync(
                 SettingsService.SummarizationMaxCompletionTokensPerCallKey,
                 DefaultMaxCompletionTokensPerCall);
@@ -175,6 +181,7 @@ Coverage (include only if evidenced):
                     effectiveMaxBullets,
                     maxCompletionTokensPerCall,
                     masterPrompt,
+                    provider,
                     apiKey,
                     cancellationToken);
             }
@@ -182,9 +189,10 @@ Coverage (include only if evidenced):
             {
                 try
                 {
-                    bulletsText = await CallOpenAIWithContinuationAsync(
+                    bulletsText = await CallProviderWithContinuationAsync(
                         masterPrompt,
                         prompt,
+                        provider,
                         apiKey,
                         maxBullets: effectiveMaxBullets,
                         maxCompletionTokensPerCall: maxCompletionTokensPerCall,
@@ -204,6 +212,7 @@ Coverage (include only if evidenced):
                         effectiveMaxBullets,
                         maxCompletionTokensPerCall,
                         masterPrompt,
+                        provider,
                         apiKey,
                         cancellationToken);
                 }
@@ -380,43 +389,10 @@ Coverage (include only if evidenced):
         }
     }
 
-    private async Task<string> CallOpenAIAsync(string systemPrompt, string prompt, string apiKey, CancellationToken cancellationToken)
-    {
-        var payload = new
-        {
-            model = _modelName,
-            messages = new[]
-            {
-                new { role = "developer", content = systemPrompt },
-                new { role = "user", content = prompt }
-            },
-            temperature = 0.2,
-            max_completion_tokens = DefaultMaxCompletionTokensPerCall,
-            store = false
-        };
-
-        using var request = new HttpRequestMessage(HttpMethod.Post, "chat/completions");
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-        request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
-
-        using var response = await Http.SendAsync(request, cancellationToken);
-        var json = await response.Content.ReadAsStringAsync(cancellationToken);
-        if (!response.IsSuccessStatusCode)
-            throw new InvalidOperationException($"OpenAI API error: {response.StatusCode} - {json}");
-
-        using var doc = JsonDocument.Parse(json);
-        var content = doc.RootElement
-            .GetProperty("choices")[0]
-            .GetProperty("message")
-            .GetProperty("content")
-            .GetString();
-
-        return content ?? string.Empty;
-    }
-
-    private async Task<string> CallOpenAIWithContinuationAsync(
+    private async Task<string> CallProviderWithContinuationAsync(
         string masterPrompt,
         string prompt,
+        ISummarizationProvider provider,
         string apiKey,
         int maxBullets,
         int maxCompletionTokensPerCall,
@@ -425,7 +401,6 @@ Coverage (include only if evidenced):
         // Most days should fit in one response, but long diaries can hit token caps.
         // If the model stops due to length, ask it to continue and return only new bullets.
         var allBullets = new List<string>();
-        var lastFinishReason = string.Empty;
         string? pendingPartialBullet = null;
 
         for (var part = 0; part < MaxContinuationParts && allBullets.Count < maxBullets; part++)
@@ -437,18 +412,17 @@ Coverage (include only if evidenced):
                     ? BuildContinuationPromptWithPartial(prompt, allBullets, pendingPartialBullet, remaining)
                     : BuildContinuationPrompt(prompt, allBullets, remaining);
 
-            var call = await CallOpenAIInternalAsync(
+            var call = await CallProviderInternalAsync(
                 masterPrompt,
                 continuationPrompt,
+                provider,
                 apiKey,
                 maxCompletionTokensPerCall,
                 cancellationToken);
 
-            lastFinishReason = call.FinishReason ?? string.Empty;
-
             // If we hit the token limit, the last bullet may be cut mid-sentence. Capture it so we can ask the
             // model to finish it first on the next continuation call.
-            if (string.Equals(lastFinishReason, "length", StringComparison.OrdinalIgnoreCase))
+            if (call.ReachedMaxTokens)
                 pendingPartialBullet = ExtractLastBulletLine(call.Content);
             else
                 pendingPartialBullet = null;
@@ -471,13 +445,13 @@ Coverage (include only if evidenced):
                 break;
 
             // Only continue if we know we were cut off by length.
-            if (!string.Equals(lastFinishReason, "length", StringComparison.OrdinalIgnoreCase))
+            if (!call.ReachedMaxTokens)
                 break;
         }
 
         // Fall back to raw content if parsing failed unexpectedly.
         if (allBullets.Count == 0)
-            return (await CallOpenAIInternalAsync(masterPrompt, prompt, apiKey, maxCompletionTokensPerCall, cancellationToken)).Content;
+            return (await CallProviderInternalAsync(masterPrompt, prompt, provider, apiKey, maxCompletionTokensPerCall, cancellationToken)).Content;
 
         return string.Join("\n", allBullets);
     }
@@ -590,6 +564,7 @@ Coverage (include only if evidenced):
         int maxBullets,
         int maxCompletionTokensPerCall,
         string masterPrompt,
+        ISummarizationProvider provider,
         string apiKey,
         CancellationToken cancellationToken)
     {
@@ -614,6 +589,7 @@ Coverage (include only if evidenced):
                 chunkBulletBudget,
                 maxCompletionTokensPerCall,
                 masterPrompt,
+                provider,
                 apiKey,
                 cancellationToken,
                 depth: 0);
@@ -629,6 +605,7 @@ Coverage (include only if evidenced):
             maxBullets,
             maxCompletionTokensPerCall,
             masterPrompt,
+            provider,
             apiKey,
             cancellationToken,
             depth: 0);
@@ -688,6 +665,7 @@ Coverage (include only if evidenced):
         int maxBullets,
         int maxCompletionTokensPerCall,
         string masterPrompt,
+        ISummarizationProvider provider,
         string apiKey,
         CancellationToken cancellationToken,
         int depth)
@@ -717,9 +695,10 @@ Coverage (include only if evidenced):
 
         try
         {
-            var chunkText = await CallOpenAIWithContinuationAsync(
+            var chunkText = await CallProviderWithContinuationAsync(
                 masterPrompt,
                 chunkPrompt,
+                provider,
                 apiKey,
                 maxBullets: maxBullets,
                 maxCompletionTokensPerCall: maxCompletionTokensPerCall,
@@ -734,11 +713,11 @@ Coverage (include only if evidenced):
                 var merged = new List<string>();
                 var leftBullets = await SummarizeChunkAdaptiveAsync(
                     day, left, session, dayRecord, branchRows, integrationEvents, includeDiffs, commitDiffBySha,
-                    maxBullets, maxCompletionTokensPerCall, masterPrompt, apiKey, cancellationToken, depth + 1);
+                    maxBullets, maxCompletionTokensPerCall, masterPrompt, provider, apiKey, cancellationToken, depth + 1);
                 AppendUniqueBullets(merged, leftBullets);
                 var rightBullets = await SummarizeChunkAdaptiveAsync(
                     day, right, session, dayRecord, branchRows, integrationEvents, includeDiffs, commitDiffBySha,
-                    maxBullets, maxCompletionTokensPerCall, masterPrompt, apiKey, cancellationToken, depth + 1);
+                    maxBullets, maxCompletionTokensPerCall, masterPrompt, provider, apiKey, cancellationToken, depth + 1);
                 AppendUniqueBullets(merged, rightBullets);
                 return merged;
             }
@@ -772,6 +751,7 @@ Coverage (include only if evidenced):
                 maxBullets,
                 maxCompletionTokensPerCall,
                 masterPrompt,
+                provider,
                 apiKey,
                 cancellationToken,
                 depth + 1);
@@ -793,6 +773,7 @@ Coverage (include only if evidenced):
                 maxBullets,
                 maxCompletionTokensPerCall,
                 masterPrompt,
+                provider,
                 apiKey,
                 cancellationToken,
                 depth + 1);
@@ -808,6 +789,7 @@ Coverage (include only if evidenced):
         int maxBullets,
         int maxCompletionTokensPerCall,
         string masterPrompt,
+        ISummarizationProvider provider,
         string apiKey,
         CancellationToken cancellationToken,
         int depth)
@@ -815,9 +797,10 @@ Coverage (include only if evidenced):
         var synthesisPrompt = BuildChunkSynthesisPrompt(day, partialBullets, maxBullets);
         try
         {
-            return await CallOpenAIWithContinuationAsync(
+            return await CallProviderWithContinuationAsync(
                 masterPrompt,
                 synthesisPrompt,
+                provider,
                 apiKey,
                 maxBullets: maxBullets,
                 maxCompletionTokensPerCall: maxCompletionTokensPerCall,
@@ -835,6 +818,7 @@ Coverage (include only if evidenced):
                 Math.Max(maxBullets, ChunkBulletCap),
                 maxCompletionTokensPerCall,
                 masterPrompt,
+                provider,
                 apiKey,
                 cancellationToken,
                 depth + 1);
@@ -844,6 +828,7 @@ Coverage (include only if evidenced):
                 Math.Max(maxBullets, ChunkBulletCap),
                 maxCompletionTokensPerCall,
                 masterPrompt,
+                provider,
                 apiKey,
                 cancellationToken,
                 depth + 1);
@@ -853,9 +838,10 @@ Coverage (include only if evidenced):
             AppendUniqueBullets(merged, ValidateBullets(rightText, Math.Max(maxBullets, ChunkBulletCap)));
 
             var finalPrompt = BuildChunkSynthesisPrompt(day, merged, maxBullets);
-            return await CallOpenAIWithContinuationAsync(
+            return await CallProviderWithContinuationAsync(
                 masterPrompt,
                 finalPrompt,
+                provider,
                 apiKey,
                 maxBullets: maxBullets,
                 maxCompletionTokensPerCall: maxCompletionTokensPerCall,
@@ -951,47 +937,33 @@ Coverage (include only if evidenced):
         return bullets;
     }
 
-    private async Task<OpenAiChatResult> CallOpenAIInternalAsync(
+    private async Task<SummarizationProviderResponse> CallProviderInternalAsync(
         string masterPrompt,
         string prompt,
+        ISummarizationProvider provider,
         string apiKey,
         int maxCompletionTokens,
         CancellationToken cancellationToken)
     {
-        var payload = new
-        {
-            model = _modelName,
-            messages = new[]
-            {
-                new { role = "developer", content = masterPrompt },
-                new { role = "user", content = prompt }
-            },
-            temperature = 0.2,
-            max_completion_tokens = maxCompletionTokens,
-            store = false
-        };
-
-        using var request = new HttpRequestMessage(HttpMethod.Post, "chat/completions");
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-        request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
-
-        using var response = await Http.SendAsync(request, cancellationToken);
-        var json = await response.Content.ReadAsStringAsync(cancellationToken);
-        if (!response.IsSuccessStatusCode)
-            throw new InvalidOperationException($"OpenAI API error: {response.StatusCode} - {json}");
-
-        using var doc = JsonDocument.Parse(json);
-        var choice0 = doc.RootElement.GetProperty("choices")[0];
-        var content = choice0.GetProperty("message").GetProperty("content").GetString() ?? string.Empty;
-
-        string? finishReason = null;
-        if (choice0.TryGetProperty("finish_reason", out var finishReasonProp) && finishReasonProp.ValueKind == JsonValueKind.String)
-            finishReason = finishReasonProp.GetString();
-
-        return new OpenAiChatResult(content, finishReason);
+        return await provider.CompleteAsync(
+            new SummarizationProviderRequest(
+                ApiKey: apiKey,
+                Model: _modelName,
+                SystemPrompt: masterPrompt,
+                UserPrompt: prompt,
+                Temperature: 0.2,
+                MaxCompletionTokens: maxCompletionTokens),
+            cancellationToken);
     }
 
-    private async Task<string?> GetApiKeyAsync()
+    private async Task<string?> GetApiKeyForProviderAsync(string providerId)
+    {
+        return string.Equals(providerId, "anthropic", StringComparison.OrdinalIgnoreCase)
+            ? await GetAnthropicApiKeyAsync()
+            : await GetOpenAiApiKeyAsync();
+    }
+
+    private async Task<string?> GetOpenAiApiKeyAsync()
     {
         var apiKey = _apiKey;
         if (string.IsNullOrWhiteSpace(apiKey))
@@ -1005,6 +977,15 @@ Coverage (include only if evidenced):
         return string.IsNullOrWhiteSpace(apiKey) ? null : apiKey;
     }
 
+    private async Task<string?> GetAnthropicApiKeyAsync()
+    {
+        var apiKey = await _settingsService.GetAsync(SettingsService.AnthropicApiKeyKey, string.Empty);
+        if (string.IsNullOrWhiteSpace(apiKey))
+            apiKey = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY") ?? string.Empty;
+
+        return string.IsNullOrWhiteSpace(apiKey) ? null : apiKey;
+    }
+
     private async Task<string> GetMasterPromptAsync()
     {
         var prompt = await _settingsService.GetAsync(SettingsService.SummarizationMasterPromptKey, DefaultMasterPrompt);
@@ -1015,6 +996,20 @@ Coverage (include only if evidenced):
     {
         var configured = await _settingsService.GetAsync(SettingsService.SummarizationModelKey, _modelName);
         return string.IsNullOrWhiteSpace(configured) ? _modelName : configured.Trim();
+    }
+
+    private ISummarizationProvider ResolveProviderForModel(string modelName)
+    {
+        if (!string.IsNullOrWhiteSpace(modelName))
+        {
+            var matched = _providers.FirstOrDefault(p => p.CanHandleModel(modelName));
+            if (matched != null)
+                return matched;
+        }
+
+        return _providers.FirstOrDefault(p => string.Equals(p.ProviderId, "openai", StringComparison.OrdinalIgnoreCase))
+            ?? _providers.FirstOrDefault()
+            ?? throw new InvalidOperationException("No summarization providers are registered.");
     }
 
     private async Task<SessionOptions> GetSessionOptionsAsync(int sessionId)
@@ -1053,8 +1048,6 @@ Coverage (include only if evidenced):
         return Convert.ToHexString(hashBytes);
     }
 }
-
-internal sealed record OpenAiChatResult(string Content, string? FinishReason);
 
 public class SummarizationResult
 {

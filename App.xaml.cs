@@ -83,6 +83,8 @@ namespace DevChronicle
             services.AddSingleton<DatabaseService>();
             services.AddSingleton<GitService>();
             services.AddSingleton<ClusteringService>();
+            services.AddSingleton<ISummarizationProvider, OpenAiSummarizationProvider>();
+            services.AddSingleton<ISummarizationProvider, AnthropicSummarizationProvider>();
             services.AddSingleton<MiningService>();
             services.AddSingleton<SummarizationService>();
             services.AddSingleton<SummarizationRunnerService>();

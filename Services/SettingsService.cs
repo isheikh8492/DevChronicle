@@ -19,6 +19,7 @@ public class SettingsService
     public const string SummarizationNetworkRetryWindowMinutesKey = "summarization.network_retry_window_minutes";
     public const string SummarizationRateLimitRetryWindowMinutesKey = "summarization.rate_limit_retry_window_minutes";
     public const string OpenAiApiKeyKey = "openai.api_key";
+    public const string AnthropicApiKeyKey = "anthropic.api_key";
     public const string ExportDefaultDirectoryKey = "export.default_directory";
 
     private readonly DatabaseService _databaseService;
