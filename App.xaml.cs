@@ -39,6 +39,20 @@ namespace DevChronicle
 
                 _logger.LogInfo("Showing main window...");
                 mainWindow.Show();
+
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var runner = ServiceProvider.GetRequiredService<SummarizationRunnerService>();
+                        await runner.ResumeActiveBatchesAsync();
+                    }
+                    catch (Exception resumeEx)
+                    {
+                        _logger?.LogError($"Failed to resume active summarization batches: {resumeEx.Message}");
+                    }
+                });
+
                 _logger.LogInfo("Application started successfully");
             }
             catch (Exception ex)
@@ -85,6 +99,7 @@ namespace DevChronicle
             services.AddSingleton<ClusteringService>();
             services.AddSingleton<MiningService>();
             services.AddSingleton<SummarizationService>();
+            services.AddSingleton<SummarizationBatchService>();
             services.AddSingleton<SummarizationRunnerService>();
             services.AddSingleton<ExportService>();
             services.AddSingleton<SettingsService>();

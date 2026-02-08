@@ -110,6 +110,42 @@
                         Text="These control output length and the continuation behavior when a response hits the token limit."
                         Margin="0,0,0,12"/>
 
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="16"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0"
+                                Padding="10"
+                                CornerRadius="6"
+                                BorderThickness="1"
+                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
+                            <StackPanel>
+                                <TextBlock Text="Pending mode" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,6"/>
+                                <ComboBox ItemsSource="{Binding AvailableSummarizationPendingModes}"
+                                          SelectedItem="{Binding SummarizationPendingMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Column="2"
+                                Padding="10"
+                                CornerRadius="6"
+                                BorderThickness="1"
+                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
+                            <StackPanel>
+                                <TextBlock Text="Batch poll interval (seconds)" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,6"/>
+                                <ui:NumberBox Value="{Binding SummarizationBatchPollIntervalSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                              Minimum="5"
+                                              Maximum="300"
+                                              SpinButtonPlacementMode="Inline"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>

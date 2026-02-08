@@ -159,6 +159,50 @@ public class DatabaseService
                 FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
             )");
 
+        connection.Execute(@"
+            CREATE TABLE IF NOT EXISTS summarization_batches (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id INTEGER NOT NULL,
+                openai_batch_id TEXT NOT NULL UNIQUE,
+                status TEXT NOT NULL,
+                input_file_id TEXT,
+                output_file_id TEXT,
+                error_file_id TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                last_error TEXT,
+                FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+            )");
+
+        connection.Execute(@"
+            CREATE INDEX IF NOT EXISTS idx_summarization_batches_session_status
+            ON summarization_batches(session_id, status)");
+
+        connection.Execute(@"
+            CREATE TABLE IF NOT EXISTS summarization_batch_items (
+                batch_id INTEGER NOT NULL,
+                session_id INTEGER NOT NULL,
+                day TEXT NOT NULL,
+                custom_id TEXT NOT NULL UNIQUE,
+                model TEXT NOT NULL DEFAULT '',
+                prompt_version TEXT NOT NULL DEFAULT 'v1',
+                input_hash TEXT NOT NULL DEFAULT '',
+                max_bullets INTEGER NOT NULL DEFAULT 6,
+                status TEXT NOT NULL,
+                error TEXT,
+                PRIMARY KEY (batch_id, day),
+                FOREIGN KEY (batch_id) REFERENCES summarization_batches(id) ON DELETE CASCADE
+            )");
+
+        EnsureColumnExists(connection, "summarization_batch_items", "model", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "summarization_batch_items", "prompt_version", "TEXT NOT NULL DEFAULT 'v1'");
+        EnsureColumnExists(connection, "summarization_batch_items", "input_hash", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "summarization_batch_items", "max_bullets", "INTEGER NOT NULL DEFAULT 6");
+
+        connection.Execute(@"
+            CREATE INDEX IF NOT EXISTS idx_summarization_batch_items_batch_status
+            ON summarization_batch_items(batch_id, status)");
+
         // Create resume_summaries table
         connection.Execute(@"
             CREATE TABLE IF NOT EXISTS resume_summaries (
@@ -1357,5 +1401,214 @@ public class DatabaseService
         return await connection.ExecuteAsync(
             "DELETE FROM day_summaries WHERE session_id = @SessionId",
             new { SessionId = sessionId });
+    }
+
+    public async Task<int> CreateSummarizationBatchAsync(SummarizationBatch batch)
+    {
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+        var sql = @"
+            INSERT INTO summarization_batches
+            (session_id, openai_batch_id, status, input_file_id, output_file_id, error_file_id, created_at, updated_at, last_error)
+            VALUES (@SessionId, @OpenAiBatchId, @Status, @InputFileId, @OutputFileId, @ErrorFileId, @CreatedAt, @UpdatedAt, @LastError);
+            SELECT last_insert_rowid();";
+
+        var id = await connection.ExecuteScalarAsync<long>(sql, new
+        {
+            batch.SessionId,
+            batch.OpenAiBatchId,
+            batch.Status,
+            batch.InputFileId,
+            batch.OutputFileId,
+            batch.ErrorFileId,
+            batch.CreatedAt,
+            batch.UpdatedAt,
+            batch.LastError
+        });
+
+        return (int)id;
+    }
+
+    public async Task UpdateSummarizationBatchAsync(SummarizationBatch batch)
+    {
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+        var sql = @"
+            UPDATE summarization_batches
+            SET status = @Status,
+                input_file_id = @InputFileId,
+                output_file_id = @OutputFileId,
+                error_file_id = @ErrorFileId,
+                updated_at = @UpdatedAt,
+                last_error = @LastError
+            WHERE id = @Id";
+
+        await connection.ExecuteAsync(sql, new
+        {
+            batch.Id,
+            batch.Status,
+            batch.InputFileId,
+            batch.OutputFileId,
+            batch.ErrorFileId,
+            batch.UpdatedAt,
+            batch.LastError
+        });
+    }
+
+    public async Task<SummarizationBatch?> GetSummarizationBatchByIdAsync(int batchId)
+    {
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+        var sql = @"
+            SELECT
+                id AS Id,
+                session_id AS SessionId,
+                openai_batch_id AS OpenAiBatchId,
+                status AS Status,
+                input_file_id AS InputFileId,
+                output_file_id AS OutputFileId,
+                error_file_id AS ErrorFileId,
+                created_at AS CreatedAt,
+                updated_at AS UpdatedAt,
+                last_error AS LastError
+            FROM summarization_batches
+            WHERE id = @BatchId";
+
+        return await connection.QuerySingleOrDefaultAsync<SummarizationBatch>(sql, new { BatchId = batchId });
+    }
+
+    public async Task<SummarizationBatch?> GetSummarizationBatchByOpenAiIdAsync(string openAiBatchId)
+    {
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+        var sql = @"
+            SELECT
+                id AS Id,
+                session_id AS SessionId,
+                openai_batch_id AS OpenAiBatchId,
+                status AS Status,
+                input_file_id AS InputFileId,
+                output_file_id AS OutputFileId,
+                error_file_id AS ErrorFileId,
+                created_at AS CreatedAt,
+                updated_at AS UpdatedAt,
+                last_error AS LastError
+            FROM summarization_batches
+            WHERE openai_batch_id = @OpenAiBatchId";
+
+        return await connection.QuerySingleOrDefaultAsync<SummarizationBatch>(sql, new { OpenAiBatchId = openAiBatchId });
+    }
+
+    public async Task<List<SummarizationBatch>> GetActiveSummarizationBatchesAsync()
+    {
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+        var sql = @"
+            SELECT
+                id AS Id,
+                session_id AS SessionId,
+                openai_batch_id AS OpenAiBatchId,
+                status AS Status,
+                input_file_id AS InputFileId,
+                output_file_id AS OutputFileId,
+                error_file_id AS ErrorFileId,
+                created_at AS CreatedAt,
+                updated_at AS UpdatedAt,
+                last_error AS LastError
+            FROM summarization_batches
+            WHERE status NOT IN ('Completed', 'PartialFailure', 'Failed', 'Canceled')
+            ORDER BY created_at DESC";
+
+        return (await connection.QueryAsync<SummarizationBatch>(sql)).ToList();
+    }
+
+    public async Task UpsertSummarizationBatchItemsAsync(IEnumerable<SummarizationBatchItem> items)
+    {
+        var list = items.ToList();
+        if (list.Count == 0)
+            return;
+
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+        using var tx = connection.BeginTransaction();
+
+        const string sql = @"
+            INSERT INTO summarization_batch_items
+            (batch_id, session_id, day, custom_id, model, prompt_version, input_hash, max_bullets, status, error)
+            VALUES (@BatchId, @SessionId, @Day, @CustomId, @Model, @PromptVersion, @InputHash, @MaxBullets, @Status, @Error)
+            ON CONFLICT(batch_id, day) DO UPDATE SET
+                custom_id = excluded.custom_id,
+                model = excluded.model,
+                prompt_version = excluded.prompt_version,
+                input_hash = excluded.input_hash,
+                max_bullets = excluded.max_bullets,
+                status = excluded.status,
+                error = excluded.error";
+
+        foreach (var item in list)
+        {
+            await connection.ExecuteAsync(sql, new
+            {
+                item.BatchId,
+                item.SessionId,
+                Day = item.Day.ToString("yyyy-MM-dd"),
+                item.CustomId,
+                item.Model,
+                item.PromptVersion,
+                item.InputHash,
+                item.MaxBullets,
+                item.Status,
+                item.Error
+            }, tx);
+        }
+
+        tx.Commit();
+    }
+
+    public async Task<List<SummarizationBatchItem>> GetSummarizationBatchItemsAsync(int batchId)
+    {
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+        var sql = @"
+            SELECT
+                batch_id AS BatchId,
+                session_id AS SessionId,
+                day AS Day,
+                custom_id AS CustomId,
+                model AS Model,
+                prompt_version AS PromptVersion,
+                input_hash AS InputHash,
+                max_bullets AS MaxBullets,
+                status AS Status,
+                error AS Error
+            FROM summarization_batch_items
+            WHERE batch_id = @BatchId
+            ORDER BY day";
+
+        return (await connection.QueryAsync<SummarizationBatchItem>(sql, new { BatchId = batchId })).ToList();
+    }
+
+    public async Task UpdateSummarizationBatchItemStatusAsync(
+        int batchId,
+        DateTime day,
+        string status,
+        string? error)
+    {
+        using var connection = GetConnection();
+        await connection.OpenAsync();
+        var sql = @"
+            UPDATE summarization_batch_items
+            SET status = @Status,
+                error = @Error
+            WHERE batch_id = @BatchId
+              AND day = @Day";
+
+        await connection.ExecuteAsync(sql, new
+        {
+            BatchId = batchId,
+            Day = day.ToString("yyyy-MM-dd"),
+            Status = status,
+            Error = error
+        });
     }
 }

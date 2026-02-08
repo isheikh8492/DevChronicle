@@ -245,6 +245,107 @@ Coverage (include only if evidenced):
         return result;
     }
 
+    public async Task<DaySummarizationPayload?> BuildDaySummarizationPayloadAsync(
+        int sessionId,
+        DateTime day,
+        int maxBullets = 6,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var commits = (await _databaseService.GetCommitsForDayAsync(sessionId, day)).ToList();
+        var options = await GetSessionOptionsAsync(sessionId);
+        if (!options.IncludeMerges)
+            commits = commits.Where(c => !c.IsMerge).ToList();
+
+        if (commits.Count == 0)
+            return null;
+
+        var workUnits = _clusteringService.ClusterCommits(commits);
+        var session = await _databaseService.GetSessionAsync(sessionId);
+        var dayRecord = (await _databaseService.GetDaysAsync(sessionId))
+            .FirstOrDefault(d => d.Date.Date == day.Date);
+        var branchRows = await _databaseService.GetCommitBranchRowsForDayAsync(sessionId, day);
+        var integrationEvents = await _databaseService.GetIntegrationEventsForDayAsync(sessionId, day);
+        var commitDiffBySha = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (options.IncludeDiffs && session != null && !string.IsNullOrWhiteSpace(session.RepoPath))
+        {
+            foreach (var commit in commits)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var diff = await _gitService.GetCommitDiffAsync(session.RepoPath, commit.Sha);
+                commitDiffBySha[commit.Sha] = diff;
+            }
+        }
+
+        var masterPrompt = await GetMasterPromptAsync();
+        _modelName = await GetModelNameAsync();
+        var maxCompletionTokensPerCall = await _settingsService.GetAsync(
+            SettingsService.SummarizationMaxCompletionTokensPerCallKey,
+            DefaultMaxCompletionTokensPerCall);
+        var maxTotalBullets = await _settingsService.GetAsync(
+            SettingsService.SummarizationMaxTotalBulletsPerDayKey,
+            DefaultMaxTotalBullets);
+
+        maxCompletionTokensPerCall = Clamp(maxCompletionTokensPerCall, min: 256, max: 8000);
+        maxTotalBullets = Clamp(maxTotalBullets, min: 1, max: 200);
+        var effectiveMaxBullets = Clamp(Math.Min(maxBullets, maxTotalBullets), 1, 200);
+
+        var prompt = BuildPrompt(
+            day,
+            commits,
+            workUnits,
+            effectiveMaxBullets,
+            session,
+            dayRecord,
+            branchRows,
+            integrationEvents,
+            options.IncludeDiffs,
+            commitDiffBySha);
+
+        return new DaySummarizationPayload
+        {
+            SessionId = sessionId,
+            Day = day.Date,
+            MasterPrompt = masterPrompt,
+            Prompt = prompt,
+            Model = _modelName,
+            MaxBullets = effectiveMaxBullets,
+            MaxCompletionTokensPerCall = maxCompletionTokensPerCall,
+            PromptVersion = PromptVersion,
+            InputHash = ComputeInputHash(commits, day)
+        };
+    }
+
+    public async Task<string?> GetConfiguredApiKeyAsync() => await GetApiKeyAsync();
+
+    public List<string> ValidateBulletsForStorage(string bulletsText, int maxBullets) =>
+        ValidateBullets(bulletsText, maxBullets);
+
+    public async Task StoreDaySummaryAsync(DaySummarizationPayload payload, IReadOnlyList<string> bullets)
+    {
+        var summary = new DaySummary
+        {
+            SessionId = payload.SessionId,
+            Day = payload.Day,
+            BulletsText = string.Join("\n", bullets),
+            Model = payload.Model,
+            PromptVersion = payload.PromptVersion,
+            InputHash = payload.InputHash,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        await _databaseService.UpsertDaySummaryAsync(summary);
+
+        var dayRecord = (await _databaseService.GetDaysAsync(payload.SessionId))
+            .FirstOrDefault(d => d.Date.Date == payload.Day.Date);
+        if (dayRecord != null)
+        {
+            dayRecord.Status = DayStatus.Summarized;
+            await _databaseService.UpsertDayAsync(dayRecord);
+        }
+    }
+
     private string BuildPrompt(
         DateTime day,
         List<Commit> commits,

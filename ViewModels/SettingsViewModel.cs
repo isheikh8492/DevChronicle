@@ -49,6 +49,12 @@ public partial class SettingsViewModel : ObservableObject
     private string selectedSummarizationModel = "gpt-4o-mini";
 
     [ObservableProperty]
+    private string summarizationPendingMode = "Batch";
+
+    [ObservableProperty]
+    private int summarizationBatchPollIntervalSeconds;
+
+    [ObservableProperty]
     private int summarizationMaxCompletionTokensPerCall;
 
     [ObservableProperty]
@@ -70,6 +76,7 @@ public partial class SettingsViewModel : ObservableObject
         "gpt-4.1",
         "gpt-5"
     };
+    public IReadOnlyList<string> AvailableSummarizationPendingModes { get; } = new[] { "Batch", "Live" };
 
     public SettingsViewModel(SettingsService settingsService)
     {
@@ -89,6 +96,8 @@ public partial class SettingsViewModel : ObservableObject
         _actualApiKey = await _settingsService.GetAsync(SettingsService.OpenAiApiKeyKey, string.Empty);
         MasterPromptText = await _settingsService.GetAsync(SettingsService.SummarizationMasterPromptKey, string.Empty);
         SelectedSummarizationModel = await _settingsService.GetAsync(SettingsService.SummarizationModelKey, "gpt-4o-mini");
+        SummarizationPendingMode = await _settingsService.GetAsync(SettingsService.SummarizationPendingModeKey, "Batch");
+        SummarizationBatchPollIntervalSeconds = await _settingsService.GetAsync(SettingsService.SummarizationBatchPollIntervalSecondsKey, 30);
         SummarizationMaxCompletionTokensPerCall = await _settingsService.GetAsync(SettingsService.SummarizationMaxCompletionTokensPerCallKey, 3000);
         SummarizationMaxTotalBulletsPerDay = await _settingsService.GetAsync(SettingsService.SummarizationMaxTotalBulletsPerDayKey, 40);
         SummarizationNetworkRetryWindowMinutes = await _settingsService.GetAsync(SettingsService.SummarizationNetworkRetryWindowMinutesKey, 5);
@@ -143,6 +152,8 @@ public partial class SettingsViewModel : ObservableObject
     partial void OnSummarizationMaxTotalBulletsPerDayChanged(int value) => _ = _settingsService.SetAsync(SettingsService.SummarizationMaxTotalBulletsPerDayKey, value);
     partial void OnSummarizationNetworkRetryWindowMinutesChanged(int value) => _ = _settingsService.SetAsync(SettingsService.SummarizationNetworkRetryWindowMinutesKey, Math.Clamp(value, 1, 60));
     partial void OnSummarizationRateLimitRetryWindowMinutesChanged(int value) => _ = _settingsService.SetAsync(SettingsService.SummarizationRateLimitRetryWindowMinutesKey, Math.Clamp(value, 1, 60));
+    partial void OnSummarizationBatchPollIntervalSecondsChanged(int value) => _ = _settingsService.SetAsync(SettingsService.SummarizationBatchPollIntervalSecondsKey, Math.Clamp(value, 5, 300));
+    partial void OnSummarizationPendingModeChanged(string value) => _ = _settingsService.SetAsync(SettingsService.SummarizationPendingModeKey, string.Equals(value, "Live", StringComparison.OrdinalIgnoreCase) ? "Live" : "Batch");
     partial void OnSelectedSummarizationModelChanged(string value) =>
         _ = _settingsService.SetAsync(
             SettingsService.SummarizationModelKey,

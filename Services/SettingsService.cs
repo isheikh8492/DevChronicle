@@ -14,6 +14,8 @@ public class SettingsService
     public const string MaxBulletsPerDayKey = "summarization.max_bullets_per_day";
     public const string SummarizationMasterPromptKey = "summarization.master_prompt";
     public const string SummarizationModelKey = "summarization.model";
+    public const string SummarizationPendingModeKey = "summarization.pending_mode";
+    public const string SummarizationBatchPollIntervalSecondsKey = "summarization.batch_poll_interval_seconds";
     public const string SummarizationMaxCompletionTokensPerCallKey = "summarization.max_completion_tokens_per_call";
     public const string SummarizationMaxTotalBulletsPerDayKey = "summarization.max_total_bullets_per_day";
     public const string SummarizationNetworkRetryWindowMinutesKey = "summarization.network_retry_window_minutes";

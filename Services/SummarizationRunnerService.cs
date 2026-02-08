@@ -12,10 +12,13 @@ public class SummarizationRunnerService
     private const int NetworkRetryMaxDelayMilliseconds = 30000;
 
     private readonly SummarizationService _summarizationService;
+    private readonly SummarizationBatchService _summarizationBatchService;
     private readonly DatabaseService _databaseService;
     private readonly SessionContextService _sessionContext;
     private readonly SettingsService _settingsService;
     private CancellationTokenSource? _cancellationTokenSource;
+    private readonly HashSet<int> _activeBatchMonitors = new();
+    private readonly object _batchMonitorLock = new();
 
     public int DaysSummarized { get; private set; }
     public int PendingDays { get; private set; }
@@ -32,17 +35,33 @@ public class SummarizationRunnerService
 
     public SummarizationRunnerService(
         SummarizationService summarizationService,
+        SummarizationBatchService summarizationBatchService,
         DatabaseService databaseService,
         SettingsService settingsService,
         SessionContextService sessionContext)
     {
         _summarizationService = summarizationService;
+        _summarizationBatchService = summarizationBatchService;
         _databaseService = databaseService;
         _settingsService = settingsService;
         _sessionContext = sessionContext;
     }
 
     public async Task SummarizePendingDaysAsync()
+    {
+        if (IsSummarizing) return;
+
+        var pendingMode = await _settingsService.GetAsync(SettingsService.SummarizationPendingModeKey, "Batch");
+        if (string.Equals(pendingMode, "Batch", StringComparison.OrdinalIgnoreCase))
+        {
+            await SummarizePendingDaysBatchAsync();
+            return;
+        }
+
+        await SummarizePendingDaysLiveAsync();
+    }
+
+    private async Task SummarizePendingDaysLiveAsync()
     {
         if (IsSummarizing) return;
 
@@ -136,6 +155,67 @@ public class SummarizationRunnerService
         }
     }
 
+    private async Task SummarizePendingDaysBatchAsync()
+    {
+        if (IsSummarizing) return;
+
+        var session = _sessionContext.CurrentSession;
+        if (session == null)
+        {
+            RequireInput("No session selected.", "Open a session and retry.");
+            return;
+        }
+
+        IsSummarizing = true;
+        PublishState();
+        BeginOperation("Submitting pending days batch");
+        _cancellationTokenSource = new CancellationTokenSource();
+
+        try
+        {
+            var allDays = (await _databaseService.GetDaysAsync(session.Id)).ToList();
+            var pendingDaysList = allDays.Where(d => d.Status == DayStatus.Mined).ToList();
+            if (pendingDaysList.Count == 0)
+            {
+                RequireInput("No pending days to summarize.", "Mine or select a session with pending days.");
+                return;
+            }
+
+            PendingDays = pendingDaysList.Count;
+            PublishState();
+            var maxBullets = await _settingsService.GetAsync(SettingsService.MaxBulletsPerDayKey, 6);
+
+            UpdateOperation("Submitting pending days batch", 0, pendingDaysList.Count);
+            Status = "Submitting batch to OpenAI...";
+            PublishState();
+
+            var batch = await _summarizationBatchService.SubmitPendingDaysBatchAsync(
+                session.Id,
+                maxBullets,
+                _cancellationTokenSource.Token);
+
+            Status = $"Batch submitted ({batch.OpenAiBatchId}).";
+            PublishState();
+            await MonitorBatchUntilTerminalAsync(batch.Id, _cancellationTokenSource.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            CancelOperation("Summarization canceled.");
+        }
+        catch (Exception ex)
+        {
+            FailOperation($"Batch summarization failed: {ex.Message}", "Fix the batch issue and retry.");
+        }
+        finally
+        {
+            IsSummarizing = false;
+            PublishState();
+            _cancellationTokenSource?.Dispose();
+            _cancellationTokenSource = null;
+            await UpdatePendingCountAsync();
+        }
+    }
+
     public async Task SummarizeSelectedDayAsync(DateTime day)
     {
         if (IsSummarizing) return;
@@ -204,6 +284,36 @@ public class SummarizationRunnerService
         _cancellationTokenSource?.Cancel();
         Status = "Stopping summarization...";
         PublishState();
+    }
+
+    public async Task ResumeActiveBatchesAsync(CancellationToken cancellationToken = default)
+    {
+        var activeBatches = await _summarizationBatchService.GetActiveBatchesAsync();
+        if (activeBatches.Count > 0)
+        {
+            IsSummarizing = true;
+            Status = $"Resuming {activeBatches.Count} active batch job(s)...";
+            OperationState = OperationState.Running;
+            PublishState();
+        }
+
+        foreach (var batch in activeBatches)
+        {
+            if (!TryStartBatchMonitor(batch.Id))
+                continue;
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await MonitorBatchUntilTerminalAsync(batch.Id, cancellationToken);
+                }
+                catch
+                {
+                    // Ignore background resume failures; UI status will be updated on next explicit run.
+                }
+            }, cancellationToken);
+        }
     }
 
     public async Task UpdatePendingCountAsync()
@@ -293,6 +403,95 @@ public class SummarizationRunnerService
             PublishState();
             rateLimitAttempt++;
             await Task.Delay(rateLimitDelay, cancellationToken);
+        }
+    }
+
+    private async Task MonitorBatchUntilTerminalAsync(int localBatchId, CancellationToken cancellationToken)
+    {
+        if (!TryStartBatchMonitor(localBatchId))
+            return;
+
+        try
+        {
+            var pollIntervalSeconds = await _settingsService.GetAsync(
+                SettingsService.SummarizationBatchPollIntervalSecondsKey,
+                30);
+            pollIntervalSeconds = Math.Clamp(pollIntervalSeconds, 5, 300);
+
+            while (true)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                try
+                {
+                    var batch = await _summarizationBatchService.RefreshBatchStatusAsync(localBatchId, cancellationToken);
+                    Status = $"Batch {batch.Status} ({batch.OpenAiBatchId})";
+                    PublishState();
+
+                    if (string.Equals(batch.Status, SummarizationBatchStatuses.Completed, StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(batch.Status, SummarizationBatchStatuses.Applying, StringComparison.OrdinalIgnoreCase))
+                    {
+                        Status = "Applying batch results...";
+                        PublishState();
+                        var applyResult = await _summarizationBatchService.ApplyBatchResultsAsync(localBatchId, cancellationToken);
+                        Status = applyResult.Failed > 0
+                            ? $"Partial Failure: {applyResult.Succeeded} succeeded, {applyResult.Failed} failed."
+                            : $"Completed: {applyResult.Succeeded} days summarized.";
+                        if (applyResult.Failed > 0)
+                            OperationState = OperationState.Error;
+                        else
+                            OperationState = OperationState.Success;
+                        PublishState();
+                        return;
+                    }
+
+                    if (string.Equals(batch.Status, SummarizationBatchStatuses.Failed, StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(batch.Status, SummarizationBatchStatuses.Canceled, StringComparison.OrdinalIgnoreCase))
+                    {
+                        FailOperation($"Batch failed: {batch.LastError ?? "Unknown error"}", "Retry pending batch.");
+                        return;
+                    }
+                }
+                catch (Exception ex) when (IsRetryableNetworkError(ex.Message))
+                {
+                    Status = "Batch polling paused due to network issue. Retrying...";
+                    PublishState();
+                }
+
+                await Task.Delay(TimeSpan.FromSeconds(pollIntervalSeconds), cancellationToken);
+            }
+        }
+        finally
+        {
+            StopBatchMonitor(localBatchId);
+        }
+    }
+
+    private bool TryStartBatchMonitor(int localBatchId)
+    {
+        lock (_batchMonitorLock)
+        {
+            var added = _activeBatchMonitors.Add(localBatchId);
+            if (added)
+            {
+                IsSummarizing = true;
+                OperationState = OperationState.Running;
+                PublishState();
+            }
+
+            return added;
+        }
+    }
+
+    private void StopBatchMonitor(int localBatchId)
+    {
+        lock (_batchMonitorLock)
+        {
+            _activeBatchMonitors.Remove(localBatchId);
+            if (_activeBatchMonitors.Count == 0 && _cancellationTokenSource == null)
+            {
+                IsSummarizing = false;
+                PublishState();
+            }
         }
     }
 
