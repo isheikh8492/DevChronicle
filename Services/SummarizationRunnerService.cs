@@ -305,6 +305,14 @@ public class SummarizationRunnerService
             {
                 CancelOperation("Summarization canceled.");
             }
+
+            // If this stop request is handling resumed/background batch monitors,
+            // there may be no local operation finally-block to flip IsSummarizing.
+            if (_cancellationTokenSource == null)
+            {
+                IsSummarizing = false;
+                PublishState();
+            }
         }
         catch (Exception ex)
         {
@@ -472,8 +480,13 @@ public class SummarizationRunnerService
                         return;
                     }
 
-                    if (string.Equals(batch.Status, SummarizationBatchStatuses.Failed, StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(batch.Status, SummarizationBatchStatuses.Canceled, StringComparison.OrdinalIgnoreCase))
+                    if (string.Equals(batch.Status, SummarizationBatchStatuses.Canceled, StringComparison.OrdinalIgnoreCase))
+                    {
+                        CancelOperation("Batch canceled.");
+                        return;
+                    }
+
+                    if (string.Equals(batch.Status, SummarizationBatchStatuses.Failed, StringComparison.OrdinalIgnoreCase))
                     {
                         FailOperation($"Batch failed: {batch.LastError ?? "Unknown error"}", "Retry pending batch.");
                         return;
