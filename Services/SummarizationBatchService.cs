@@ -57,9 +57,11 @@ public class SummarizationBatchService
         if (payloads.Count == 0)
             throw new InvalidOperationException("No pending day payloads could be created.");
 
+        var submitRunId = Guid.NewGuid().ToString("N");
+
         var lines = payloads.Select(p => JsonSerializer.Serialize(new
         {
-            custom_id = BuildCustomId(p.SessionId, p.Day),
+            custom_id = BuildCustomId(p.SessionId, p.Day, submitRunId),
             method = "POST",
             url = "/v1/chat/completions",
             body = new
@@ -100,7 +102,7 @@ public class SummarizationBatchService
             BatchId = batch.Id,
             SessionId = p.SessionId,
             Day = p.Day,
-            CustomId = BuildCustomId(p.SessionId, p.Day),
+            CustomId = BuildCustomId(p.SessionId, p.Day, submitRunId),
             Model = p.Model,
             PromptVersion = p.PromptVersion,
             InputHash = p.InputHash,
@@ -296,8 +298,8 @@ public class SummarizationBatchService
         return true;
     }
 
-    private static string BuildCustomId(int sessionId, DateTime day) =>
-        $"session:{sessionId}:day:{day:yyyy-MM-dd}";
+    private static string BuildCustomId(int sessionId, DateTime day, string runId) =>
+        $"session:{sessionId}:day:{day:yyyy-MM-dd}:run:{runId}";
 
     private async Task<string> UploadBatchInputFileAsync(string jsonl, string apiKey, CancellationToken cancellationToken)
     {
