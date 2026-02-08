@@ -40,6 +40,7 @@ public class SummarizationRunnerService
         _databaseService = databaseService;
         _settingsService = settingsService;
         _sessionContext = sessionContext;
+        _summarizationService.StatusMessageChanged += OnSummarizationStatusMessageChanged;
     }
 
     public async Task SummarizePendingDaysAsync()
@@ -390,5 +391,14 @@ public class SummarizationRunnerService
                text.Contains("an error occurred while sending the request") ||
                text.Contains("httpclient") ||
                text.Contains("unable to read data from the transport connection");
+    }
+
+    private void OnSummarizationStatusMessageChanged(object? sender, string message)
+    {
+        if (!IsSummarizing || OperationState != OperationState.Running)
+            return;
+
+        Status = message;
+        PublishState();
     }
 }

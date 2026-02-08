@@ -56,6 +56,9 @@ Coverage (include only if evidenced):
 - unresolved items and next steps
 """;
     private string? _apiKey;
+    private DateTime _lastStatusEmitUtc = DateTime.MinValue;
+
+    public event EventHandler<string>? StatusMessageChanged;
 
     public SummarizationService(
         DatabaseService databaseService,
@@ -137,6 +140,7 @@ Coverage (include only if evidenced):
             var masterPrompt = await GetMasterPromptAsync();
             _modelName = await GetModelNameAsync();
             var provider = ResolveProviderForModel(_modelName);
+            ReportStatus($"Using `{provider.ProviderId}` provider with model `{_modelName}`.");
             var apiKey = await GetApiKeyForProviderAsync(provider.ProviderId);
             if (string.IsNullOrWhiteSpace(apiKey))
             {
@@ -155,6 +159,11 @@ Coverage (include only if evidenced):
             maxCompletionTokensPerCall = Clamp(maxCompletionTokensPerCall, min: 256, max: 8000);
             maxTotalBullets = Clamp(maxTotalBullets, min: 1, max: 200);
             var effectiveMaxBullets = Clamp(Math.Min(maxBullets, maxTotalBullets), 1, 200);
+            var perCallCaps = _rateBudgetService.GetPerCallCaps(
+                provider.ProviderId,
+                _modelName,
+                maxCompletionTokensPerCall);
+            maxCompletionTokensPerCall = Math.Min(maxCompletionTokensPerCall, perCallCaps.MaxOutputTokensPerCall);
 
             // Build prompt
             var prompt = BuildPrompt(
@@ -169,9 +178,12 @@ Coverage (include only if evidenced):
                 options.IncludeDiffs,
                 commitDiffBySha);
 
-            var shouldChunk = ShouldUseChunkedSummarization(prompt, commits.Count);
+            var inputTokenCap = perCallCaps.MaxInputTokensPerCall;
+            var promptInputTokens = EstimateTokens(masterPrompt) + EstimateTokens(prompt);
+            var shouldChunk = ShouldUseChunkedSummarization(prompt, commits.Count, inputTokenCap, promptInputTokens);
             if (shouldChunk)
             {
+                ReportStatus("Large day detected. Chunking evidence to fit limits...");
                 bulletsText = await SummarizeWithChunkingAsync(
                     day,
                     commits,
@@ -183,6 +195,7 @@ Coverage (include only if evidenced):
                     commitDiffBySha,
                     effectiveMaxBullets,
                     maxCompletionTokensPerCall,
+                    inputTokenCap,
                     masterPrompt,
                     provider,
                     apiKey,
@@ -192,6 +205,7 @@ Coverage (include only if evidenced):
             {
                 try
                 {
+                    ReportStatus("Generating summary...");
                     bulletsText = await CallProviderWithContinuationAsync(
                         masterPrompt,
                         prompt,
@@ -203,6 +217,7 @@ Coverage (include only if evidenced):
                 }
                 catch (Exception ex) when (IsRequestTooLargeError(ex.Message))
                 {
+                    ReportStatus("Input too large. Switching to chunked summarization...");
                     bulletsText = await SummarizeWithChunkingAsync(
                         day,
                         commits,
@@ -214,6 +229,7 @@ Coverage (include only if evidenced):
                         commitDiffBySha,
                         effectiveMaxBullets,
                         maxCompletionTokensPerCall,
+                        inputTokenCap,
                         masterPrompt,
                         provider,
                         apiKey,
@@ -538,9 +554,13 @@ Coverage (include only if evidenced):
         return value;
     }
 
-    private static bool ShouldUseChunkedSummarization(string prompt, int commitCount)
+    private static bool ShouldUseChunkedSummarization(
+        string prompt,
+        int commitCount,
+        int inputTokenCap,
+        int estimatedPromptInputTokens)
     {
-        return prompt.Length > DefaultMaxPromptCharsPerCall;
+        return prompt.Length > DefaultMaxPromptCharsPerCall || estimatedPromptInputTokens > inputTokenCap;
     }
 
     private static bool IsRequestTooLargeError(string? errorMessage)
@@ -566,20 +586,25 @@ Coverage (include only if evidenced):
         IReadOnlyDictionary<string, string> commitDiffBySha,
         int maxBullets,
         int maxCompletionTokensPerCall,
+        int inputTokenCap,
         string masterPrompt,
         ISummarizationProvider provider,
         string apiKey,
         CancellationToken cancellationToken)
     {
-        var chunks = BuildCommitChunks(commits, includeDiffs, commitDiffBySha, DefaultMaxPromptCharsPerCall);
+        var maxPromptChars = Math.Max(2000, inputTokenCap * 3);
+        var chunks = BuildCommitChunks(commits, includeDiffs, commitDiffBySha, maxPromptChars);
         if (chunks.Count == 0)
             chunks.Add(commits.OrderBy(c => c.AuthorDate).ToList());
 
         var partialBullets = new List<string>();
         var chunkBulletBudget = Math.Max(maxBullets, ChunkBulletCap);
+        ReportStatus($"Chunking into {chunks.Count} part(s) for safe processing...");
 
-        foreach (var chunk in chunks)
+        for (var index = 0; index < chunks.Count; index++)
         {
+            var chunk = chunks[index];
+            ReportStatus($"Summarizing chunk {index + 1}/{chunks.Count}...");
             var chunkParsed = await SummarizeChunkAdaptiveAsync(
                 day,
                 chunk,
@@ -591,6 +616,7 @@ Coverage (include only if evidenced):
                 commitDiffBySha,
                 chunkBulletBudget,
                 maxCompletionTokensPerCall,
+                inputTokenCap,
                 masterPrompt,
                 provider,
                 apiKey,
@@ -602,11 +628,13 @@ Coverage (include only if evidenced):
         if (partialBullets.Count == 0)
             return string.Empty;
 
+        ReportStatus("Synthesizing chunk summaries...");
         return await SynthesizePartialBulletsAdaptiveAsync(
             day,
             partialBullets,
             maxBullets,
             maxCompletionTokensPerCall,
+            inputTokenCap,
             masterPrompt,
             provider,
             apiKey,
@@ -667,6 +695,7 @@ Coverage (include only if evidenced):
         IReadOnlyDictionary<string, string> commitDiffBySha,
         int maxBullets,
         int maxCompletionTokensPerCall,
+        int inputTokenCap,
         string masterPrompt,
         ISummarizationProvider provider,
         string apiKey,
@@ -696,6 +725,25 @@ Coverage (include only if evidenced):
             includeDiffs,
             chunkDiffs);
 
+        var chunkInputTokens = EstimateTokens(masterPrompt) + EstimateTokens(chunkPrompt);
+        if (chunkInputTokens > inputTokenCap && depth < MaxAdaptiveSplitDepth)
+        {
+            if (orderedChunk.Count > 1)
+            {
+                var (leftByInput, rightByInput) = SplitCommitListInHalf(orderedChunk);
+                var mergedByInput = new List<string>();
+                var leftBulletsByInput = await SummarizeChunkAdaptiveAsync(
+                    day, leftByInput, session, dayRecord, branchRows, integrationEvents, includeDiffs, commitDiffBySha,
+                    maxBullets, maxCompletionTokensPerCall, inputTokenCap, masterPrompt, provider, apiKey, cancellationToken, depth + 1);
+                AppendUniqueBullets(mergedByInput, leftBulletsByInput);
+                var rightBulletsByInput = await SummarizeChunkAdaptiveAsync(
+                    day, rightByInput, session, dayRecord, branchRows, integrationEvents, includeDiffs, commitDiffBySha,
+                    maxBullets, maxCompletionTokensPerCall, inputTokenCap, masterPrompt, provider, apiKey, cancellationToken, depth + 1);
+                AppendUniqueBullets(mergedByInput, rightBulletsByInput);
+                return mergedByInput;
+            }
+        }
+
         try
         {
             var chunkText = await CallProviderWithContinuationAsync(
@@ -716,11 +764,11 @@ Coverage (include only if evidenced):
                 var merged = new List<string>();
                 var leftBullets = await SummarizeChunkAdaptiveAsync(
                     day, left, session, dayRecord, branchRows, integrationEvents, includeDiffs, commitDiffBySha,
-                    maxBullets, maxCompletionTokensPerCall, masterPrompt, provider, apiKey, cancellationToken, depth + 1);
+                    maxBullets, maxCompletionTokensPerCall, inputTokenCap, masterPrompt, provider, apiKey, cancellationToken, depth + 1);
                 AppendUniqueBullets(merged, leftBullets);
                 var rightBullets = await SummarizeChunkAdaptiveAsync(
                     day, right, session, dayRecord, branchRows, integrationEvents, includeDiffs, commitDiffBySha,
-                    maxBullets, maxCompletionTokensPerCall, masterPrompt, provider, apiKey, cancellationToken, depth + 1);
+                    maxBullets, maxCompletionTokensPerCall, inputTokenCap, masterPrompt, provider, apiKey, cancellationToken, depth + 1);
                 AppendUniqueBullets(merged, rightBullets);
                 return merged;
             }
@@ -753,6 +801,7 @@ Coverage (include only if evidenced):
                 leftOverrides,
                 maxBullets,
                 maxCompletionTokensPerCall,
+                inputTokenCap,
                 masterPrompt,
                 provider,
                 apiKey,
@@ -775,6 +824,7 @@ Coverage (include only if evidenced):
                 rightOverrides,
                 maxBullets,
                 maxCompletionTokensPerCall,
+                inputTokenCap,
                 masterPrompt,
                 provider,
                 apiKey,
@@ -791,6 +841,7 @@ Coverage (include only if evidenced):
         List<string> partialBullets,
         int maxBullets,
         int maxCompletionTokensPerCall,
+        int inputTokenCap,
         string masterPrompt,
         ISummarizationProvider provider,
         string apiKey,
@@ -798,6 +849,50 @@ Coverage (include only if evidenced):
         int depth)
     {
         var synthesisPrompt = BuildChunkSynthesisPrompt(day, partialBullets, maxBullets);
+        var synthesisInputTokens = EstimateTokens(masterPrompt) + EstimateTokens(synthesisPrompt);
+        if (synthesisInputTokens > inputTokenCap && depth < MaxAdaptiveSplitDepth && partialBullets.Count > 1)
+        {
+            var midpointByInput = partialBullets.Count / 2;
+            var leftByInput = partialBullets.Take(midpointByInput).ToList();
+            var rightByInput = partialBullets.Skip(midpointByInput).ToList();
+
+            var leftInputText = await SynthesizePartialBulletsAdaptiveAsync(
+                day,
+                leftByInput,
+                Math.Max(maxBullets, ChunkBulletCap),
+                maxCompletionTokensPerCall,
+                inputTokenCap,
+                masterPrompt,
+                provider,
+                apiKey,
+                cancellationToken,
+                depth + 1);
+            var rightInputText = await SynthesizePartialBulletsAdaptiveAsync(
+                day,
+                rightByInput,
+                Math.Max(maxBullets, ChunkBulletCap),
+                maxCompletionTokensPerCall,
+                inputTokenCap,
+                masterPrompt,
+                provider,
+                apiKey,
+                cancellationToken,
+                depth + 1);
+
+            var mergedByInput = new List<string>();
+            AppendUniqueBullets(mergedByInput, ValidateBullets(leftInputText, Math.Max(maxBullets, ChunkBulletCap)));
+            AppendUniqueBullets(mergedByInput, ValidateBullets(rightInputText, Math.Max(maxBullets, ChunkBulletCap)));
+            var finalByInputPrompt = BuildChunkSynthesisPrompt(day, mergedByInput, maxBullets);
+            return await CallProviderWithContinuationAsync(
+                masterPrompt,
+                finalByInputPrompt,
+                provider,
+                apiKey,
+                maxBullets: maxBullets,
+                maxCompletionTokensPerCall: maxCompletionTokensPerCall,
+                cancellationToken);
+        }
+
         try
         {
             return await CallProviderWithContinuationAsync(
@@ -820,6 +915,7 @@ Coverage (include only if evidenced):
                 left,
                 Math.Max(maxBullets, ChunkBulletCap),
                 maxCompletionTokensPerCall,
+                inputTokenCap,
                 masterPrompt,
                 provider,
                 apiKey,
@@ -830,6 +926,7 @@ Coverage (include only if evidenced):
                 right,
                 Math.Max(maxBullets, ChunkBulletCap),
                 maxCompletionTokensPerCall,
+                inputTokenCap,
                 masterPrompt,
                 provider,
                 apiKey,
@@ -956,8 +1053,10 @@ Coverage (include only if evidenced):
             _modelName,
             estimatedInputTokens,
             reservedOutputTokens,
+            OnRateBudgetStatus,
             cancellationToken);
 
+        ReportStatus($"Calling `{provider.ProviderId}` model `{_modelName}`...");
         return await provider.CompleteAsync(
             new SummarizationProviderRequest(
                 ApiKey: apiKey,
@@ -976,6 +1075,28 @@ Coverage (include only if evidenced):
 
         // Rough heuristic for scheduling only. Keep conservative.
         return Math.Max(1, (int)Math.Ceiling(text.Length / 4.0));
+    }
+
+    private void OnRateBudgetStatus(RateBudgetStatus status)
+    {
+        if (status.IsWaiting)
+        {
+            // Avoid flooding UI updates while still showing active waiting.
+            var now = DateTime.UtcNow;
+            if ((now - _lastStatusEmitUtc) < TimeSpan.FromMilliseconds(800))
+                return;
+            _lastStatusEmitUtc = now;
+        }
+
+        ReportStatus(status.Message);
+    }
+
+    private void ReportStatus(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return;
+
+        StatusMessageChanged?.Invoke(this, message);
     }
 
     private async Task<string?> GetApiKeyForProviderAsync(string providerId)

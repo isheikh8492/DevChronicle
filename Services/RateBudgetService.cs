@@ -4,14 +4,39 @@ public sealed class RateBudgetService
 {
     private static readonly TimeSpan Window = TimeSpan.FromMinutes(1);
     private const double SafetyFactor = 0.8;
+    private const int RequestsPerMinuteSplitFactor = 3;
     private readonly object _gate = new();
     private readonly List<BudgetReservation> _reservations = new();
+
+    public PerCallRateCaps GetPerCallCaps(
+        string providerId,
+        string model,
+        int requestedMaxOutputTokens)
+    {
+        var limits = ResolveLimits(providerId, model);
+        var reqLimit = Math.Max(1, (int)Math.Floor(limits.RequestsPerMinute * SafetyFactor));
+        var inLimit = Math.Max(1, (int)Math.Floor(limits.InputTokensPerMinute * SafetyFactor));
+        var outLimit = Math.Max(1, (int)Math.Floor(limits.OutputTokensPerMinute * SafetyFactor));
+        var splitFactor = Math.Max(1, Math.Min(RequestsPerMinuteSplitFactor, reqLimit));
+
+        var maxInputTokensPerCall = Math.Max(512, inLimit / splitFactor);
+        var budgetedOutput = Math.Max(128, outLimit / splitFactor);
+        var maxOutputTokensPerCall = Math.Max(128, Math.Min(requestedMaxOutputTokens, budgetedOutput));
+
+        return new PerCallRateCaps(
+            MaxInputTokensPerCall: maxInputTokensPerCall,
+            MaxOutputTokensPerCall: maxOutputTokensPerCall,
+            SafeRequestsPerMinute: reqLimit,
+            SafeInputTokensPerMinute: inLimit,
+            SafeOutputTokensPerMinute: outLimit);
+    }
 
     public async Task WaitForCapacityAsync(
         string providerId,
         string model,
         int estimatedInputTokens,
         int reservedOutputTokens,
+        Action<RateBudgetStatus>? onStatus,
         CancellationToken cancellationToken)
     {
         var requestedInput = Math.Max(1, estimatedInputTokens);
@@ -19,7 +44,9 @@ public sealed class RateBudgetService
 
         while (true)
         {
-            TimeSpan delay;
+            var delay = TimeSpan.FromMilliseconds(300);
+            RateBudgetStatus? statusUpdate = null;
+            var granted = false;
 
             lock (_gate)
             {
@@ -35,34 +62,54 @@ public sealed class RateBudgetService
                 var safeInput = Math.Min(requestedInput, inLimit);
                 var safeOutput = Math.Min(requestedOutput, outLimit);
 
-                var requestCount = _reservations.Count;
-                var inputTotal = _reservations.Sum(r => r.InputTokens);
-                var outputTotal = _reservations.Sum(r => r.OutputTokens);
+                var reservationsForModel = _reservations
+                    .Where(r => string.Equals(r.ProviderId, providerId, StringComparison.OrdinalIgnoreCase)
+                             && string.Equals(r.Model, model, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                var requestCount = reservationsForModel.Count;
+                var inputTotal = reservationsForModel.Sum(r => r.InputTokens);
+                var outputTotal = reservationsForModel.Sum(r => r.OutputTokens);
 
                 if (requestCount + 1 <= reqLimit &&
                     inputTotal + safeInput <= inLimit &&
                     outputTotal + safeOutput <= outLimit)
                 {
-                    _reservations.Add(new BudgetReservation(now, safeInput, safeOutput));
-                    return;
-                }
-
-                if (_reservations.Count == 0)
-                {
-                    delay = TimeSpan.FromMilliseconds(300);
+                    _reservations.Add(new BudgetReservation(now, providerId, model, safeInput, safeOutput));
+                    statusUpdate = new RateBudgetStatus(
+                        IsWaiting: false,
+                        WaitDelay: TimeSpan.Zero,
+                        Message: "Rate budget available. Sending request.");
+                    granted = true;
                 }
                 else
                 {
-                    var nextExpiry = _reservations
-                        .Select(r => (r.Timestamp + Window) - now)
-                        .OrderBy(t => t)
-                        .FirstOrDefault();
-                    delay = nextExpiry <= TimeSpan.Zero
-                        ? TimeSpan.FromMilliseconds(300)
-                        : nextExpiry + TimeSpan.FromMilliseconds(50);
+                    if (reservationsForModel.Count == 0)
+                    {
+                        delay = TimeSpan.FromMilliseconds(300);
+                    }
+                    else
+                    {
+                        var nextExpiry = reservationsForModel
+                            .Select(r => (r.Timestamp + Window) - now)
+                            .OrderBy(t => t)
+                            .FirstOrDefault();
+                        delay = nextExpiry <= TimeSpan.Zero
+                            ? TimeSpan.FromMilliseconds(300)
+                            : nextExpiry + TimeSpan.FromMilliseconds(50);
+                    }
+
+                    var waitSeconds = Math.Max(1, (int)Math.Ceiling(delay.TotalSeconds));
+                    statusUpdate = new RateBudgetStatus(
+                        IsWaiting: true,
+                        WaitDelay: delay,
+                        Message: $"Waiting for rate budget ({waitSeconds}s)...");
                 }
             }
 
+            onStatus?.Invoke(statusUpdate!);
+            if (granted)
+                return;
             await Task.Delay(delay, cancellationToken);
         }
     }
@@ -95,5 +142,22 @@ public sealed class RateBudgetService
     }
 }
 
-internal sealed record BudgetReservation(DateTime Timestamp, int InputTokens, int OutputTokens);
+public sealed record PerCallRateCaps(
+    int MaxInputTokensPerCall,
+    int MaxOutputTokensPerCall,
+    int SafeRequestsPerMinute,
+    int SafeInputTokensPerMinute,
+    int SafeOutputTokensPerMinute);
+
+public sealed record RateBudgetStatus(
+    bool IsWaiting,
+    TimeSpan WaitDelay,
+    string Message);
+
+internal sealed record BudgetReservation(
+    DateTime Timestamp,
+    string ProviderId,
+    string Model,
+    int InputTokens,
+    int OutputTokens);
 internal sealed record ModelRateLimits(int RequestsPerMinute, int InputTokensPerMinute, int OutputTokensPerMinute);
